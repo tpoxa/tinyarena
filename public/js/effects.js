@@ -1,7 +1,6 @@
 // Transient visuals: tracers, rail beams, explosions, muzzle flashes, rockets.
 
 import * as THREE from 'three';
-import { raycastWorld } from '/shared/map.js';
 
 export class Effects {
   constructor(scene) {
@@ -28,20 +27,17 @@ export class Effects {
     this.add(mesh, ttl, (it, k) => { mat.opacity = opacity * (1 - k); });
   }
 
-  tracer(o, d, range) {
-    const no = [o[0] + d[0] * 0.05, o[1] + d[1] * 0.05, o[2] + d[2] * 0.05];
-    const t = raycastWorld(no, [d[0] * range, d[1] * range, d[2] * range]) ?? 1;
-    const end = [no[0] + d[0] * range * t, no[1] + d[1] * range * t, no[2] + d[2] * range * t];
+  tracerTo(o, d, end, flesh) {
     const start = [o[0] + d[0] * 1.2, o[1] + d[1] * 1.2 - 0.12, o[2] + d[2] * 1.2];
     this.beamBetween(start, end, 0.016, 0xffe83d, 0.07, 0.75);
-    this.impactSpark(end, 0xffb43d, 0.24);
+    this.impactSpark(end, flesh ? 0xff3d5e : 0xffb43d, flesh ? 0.4 : 0.24);
   }
 
-  railBeam(o, end, color) {
+  railBeam(o, end, color, flesh = false) {
     const start = [o[0], o[1] - 0.12, o[2]];
     this.beamBetween(start, end, 0.035, color, 0.5, 0.95);
     this.beamBetween(start, end, 0.1, color, 0.35, 0.25);
-    this.impactSpark(end, color, 0.5);
+    this.impactSpark(end, flesh ? 0xff3d5e : color, 0.5);
   }
 
   impactSpark(p, color, size) {

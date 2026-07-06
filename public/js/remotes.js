@@ -72,6 +72,36 @@ export class Remotes {
 
   get(id) { return this.players.get(id); }
 
+  // world positions of visible alive bodies (for player-vs-body collision)
+  alivePositions() {
+    const out = [];
+    for (const r of this.players.values()) {
+      if (!r.dead && r.group.visible) out.push(r.group.position);
+    }
+    return out;
+  }
+
+  // first body hit along segment a -> a+d; returns { t, point } or null
+  segmentHit(a, d) {
+    let best = null;
+    for (const r of this.players.values()) {
+      if (r.dead || !r.group.visible) continue;
+      const p = r.group.position;
+      const c = [p.x, p.y + 0.9, p.z];
+      const m = [a[0] - c[0], a[1] - c[1], a[2] - c[2]];
+      const dd = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+      if (dd < 1e-9) continue;
+      const b = (m[0] * d[0] + m[1] * d[1] + m[2] * d[2]) / dd;
+      const cc = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2] - 0.81) / dd;
+      const disc = b * b - cc;
+      if (disc < 0) continue;
+      const t = -b - Math.sqrt(disc);
+      if (t < 0 || t > 1) continue;
+      if (!best || t < best.t) best = { t, point: [a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t] };
+    }
+    return best;
+  }
+
   onSnapshot(msg) {
     const t = performance.now() / 1000;
     for (const s of msg.players) {

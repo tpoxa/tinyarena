@@ -278,6 +278,21 @@ export class LocalPlayer {
       }
     }
 
+    // soft body-vs-body collision with other players
+    if (this.remotesRef) {
+      for (const rp of this.remotesRef.alivePositions()) {
+        const dy = this.pos.y - rp.y;
+        if (dy > 1.7 || dy < -1.7) continue;
+        const dx = this.pos.x - rp.x, dz = this.pos.z - rp.z;
+        const d2 = dx * dx + dz * dz, min = 0.78;
+        if (d2 < min * min && d2 > 1e-6) {
+          const d = Math.sqrt(d2), push = min - d;
+          this.pos.x += (dx / d) * push;
+          this.pos.z += (dz / d) * push;
+        }
+      }
+    }
+
     // teleporters
     for (const tp of TELEPORTERS) {
       const dx = this.pos.x - tp.p[0], dz = this.pos.z - tp.p[2];
@@ -316,16 +331,24 @@ export class LocalPlayer {
     const d = [dir.x, dir.y, dir.z];
     this.onFire(w.id, o, d);
 
-    if (w.key === 'mg') {
-      this.audio.play('mg');
-      this.effects.tracer(o, d, w.range);
-      this.effects.muzzleFlash(this.camera);
-    } else if (w.key === 'rg') {
-      this.audio.play('rail');
+    if (w.key === 'mg' || w.key === 'rg') {
+      // visual endpoint: nearest of wall / body along the shot
       const no = [o[0] + d[0] * 0.05, o[1] + d[1] * 0.05, o[2] + d[2] * 0.05];
-      const t = raycastWorld(no, [d[0] * w.range, d[1] * w.range, d[2] * w.range]) ?? 1;
-      const end = [no[0] + d[0] * w.range * t, no[1] + d[1] * w.range * t, no[2] + d[2] * w.range * t];
-      this.effects.railBeam(o, end, 0x27e0ff);
+      const delta = [d[0] * w.range, d[1] * w.range, d[2] * w.range];
+      const tWall = raycastWorld(no, delta) ?? 1;
+      const body = this.remotesRef?.segmentHit(no, delta);
+      const flesh = !!(body && body.t < tWall);
+      const end = flesh
+        ? body.point
+        : [no[0] + delta[0] * tWall, no[1] + delta[1] * tWall, no[2] + delta[2] * tWall];
+      if (w.key === 'mg') {
+        this.audio.play('mg');
+        this.effects.tracerTo(o, d, end, flesh);
+        this.effects.muzzleFlash(this.camera);
+      } else {
+        this.audio.play('rail');
+        this.effects.railBeam(o, end, 0x27e0ff, flesh);
+      }
     } else if (w.key === 'rl') {
       this.audio.play('rl');
       // local predicted rocket for crisp visuals + instant rocket jumps

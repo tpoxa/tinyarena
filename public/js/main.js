@@ -35,6 +35,7 @@ const remotes = new Remotes(scene, effects, audio);
 const player = new LocalPlayer(camera, effects, audio, (w, o, d) => {
   net.send({ t: 'fire', w, o, d });
 });
+player.remotesRef = remotes;
 
 // pre-join camera: slow orbit over the arena
 let joined = false;

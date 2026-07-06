@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import {
-  BOXES, SPAWNS, PICKUPS, PICKUP_DEFS, NAV_NODES, KILL_Y, raycastWorld,
+  BOXES, SPAWNS, PICKUPS, PICKUP_DEFS, NAV_NODES, KILL_Y, raycastWorld, boxMin, boxMax,
 } from '../shared/map.js';
 import {
   WEAPONS, START_AMMO, MAX_AMMO, SELF_SPLASH_SCALE,
@@ -59,7 +59,7 @@ function makePlayer({ name, bot = false, ws = null }) {
     frags: 0, deaths: 0,
     lastFire: {}, lastSeen: now(),
     // bot brain
-    navTarget: null, botFireAt: 0, botWanderJitter: 0,
+    nodeI: null, prevI: null, botFireAt: 0, botWanderJitter: 0,
   };
   players.set(id, p);
   return p;
@@ -70,9 +70,11 @@ function alivePlayerCount() {
 }
 
 function pickSpawn(forPlayer) {
+  // bots only navigate the main floor, so keep them off the high platforms
+  const pool = forPlayer.bot ? SPAWNS.filter(s => s.p[1] < 1) : SPAWNS;
   // farthest spawn from living enemies
-  let best = SPAWNS[0], bestScore = -1;
-  for (const s of SPAWNS) {
+  let best = pool[0], bestScore = -1;
+  for (const s of pool) {
     let score = Infinity;
     for (const p of players.values()) {
       if (p.id === forPlayer.id || p.dead) continue;
@@ -88,6 +90,7 @@ function pickSpawn(forPlayer) {
 function respawn(p) {
   const s = pickSpawn(p);
   p.pos = [...s.p];
+  p.nodeI = null; p.prevI = null;
   p.yaw = s.yaw;
   p.pitch = 0;
   p.hp = MAX_HP;
@@ -332,6 +335,48 @@ function stepPickups() {
 
 // ---------------------------------------------------------------- bots
 
+// visibility graph over the floor waypoints: bots only walk edges with clear line of sight
+const NAV_EDGES = NAV_NODES.map((a, i) => {
+  const edges = [];
+  for (let j = 0; j < NAV_NODES.length; j++) {
+    if (j === i) continue;
+    const b = NAV_NODES[j];
+    const d = [b[0] - a[0], 0, b[2] - a[2]];
+    if (Math.hypot(d[0], d[2]) > 26) continue;
+    const t = raycastWorld([a[0], a[1] + 1.1, a[2]], d);
+    if (t === null || t >= 1) edges.push(j);
+  }
+  return edges;
+});
+
+function nearestNode(pos) {
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < NAV_NODES.length; i++) {
+    const n = NAV_NODES[i];
+    const d = (pos[0] - n[0]) ** 2 + (pos[2] - n[2]) ** 2;
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+const BOT_HALF = [0.4, 0.9, 0.4];
+
+function botMoveAxis(bot, axis, delta) {
+  if (!delta) return;
+  const p = [...bot.pos];
+  p[axis] += delta;
+  const c = [p[0], p[1] + BOT_HALF[1], p[2]];
+  for (const b of BOXES) {
+    const mn = boxMin(b), mx = boxMax(b);
+    if (
+      c[0] + BOT_HALF[0] > mn[0] && c[0] - BOT_HALF[0] < mx[0] &&
+      c[1] + BOT_HALF[1] > mn[1] && c[1] - BOT_HALF[1] < mx[1] &&
+      c[2] + BOT_HALF[2] > mn[2] && c[2] - BOT_HALF[2] < mx[2]
+    ) return; // blocked on this axis; slide along the other
+  }
+  bot.pos = p;
+}
+
 function botCanSee(bot, target) {
   const a = eyePos(bot), b = eyePos(target);
   const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
@@ -347,16 +392,34 @@ function stepBots(dt) {
   for (const bot of players.values()) {
     if (!bot.bot || bot.dead) continue;
 
-    // pick / chase waypoint on the main floor
-    if (!bot.navTarget || Math.hypot(bot.pos[0] - bot.navTarget[0], bot.pos[2] - bot.navTarget[2]) < 1.2) {
-      bot.navTarget = NAV_NODES[Math.floor(Math.random() * NAV_NODES.length)];
+    // walk the waypoint graph edge by edge — every edge is wall-free by construction
+    if (bot.nodeI === null) { bot.nodeI = nearestNode(bot.pos); bot.prevI = null; }
+    let wp = NAV_NODES[bot.nodeI];
+    if (Math.hypot(bot.pos[0] - wp[0], bot.pos[2] - wp[2]) < 1.2) {
+      const nbrs = NAV_EDGES[bot.nodeI].filter(j => j !== bot.prevI);
+      const pool = nbrs.length ? nbrs : NAV_EDGES[bot.nodeI];
+      bot.prevI = bot.nodeI;
+      bot.nodeI = pool.length ? pool[Math.floor(Math.random() * pool.length)] : nearestNode(bot.pos);
       bot.botWanderJitter = (Math.random() - 0.5) * 2;
+      wp = NAV_NODES[bot.nodeI];
     }
-    const mv = norm([bot.navTarget[0] - bot.pos[0], 0, bot.navTarget[2] - bot.pos[2]]);
+    const mv = norm([wp[0] - bot.pos[0], 0, wp[2] - bot.pos[2]]);
     const speed = 6.5;
-    bot.pos[0] += mv[0] * speed * dt;
-    bot.pos[2] += mv[2] * speed * dt;
+    botMoveAxis(bot, 0, mv[0] * speed * dt);
+    botMoveAxis(bot, 2, mv[2] * speed * dt);
     bot.pos[1] = 0.2; // bots live on the main floor
+
+    // don't stand inside other bodies
+    for (const o of players.values()) {
+      if (o.id === bot.id || o.dead) continue;
+      const dx = bot.pos[0] - o.pos[0], dz = bot.pos[2] - o.pos[2];
+      const d2 = dx * dx + dz * dz;
+      if (d2 < 0.81 && d2 > 1e-6) {
+        const d = Math.sqrt(d2), push = (0.9 - d) * 0.5;
+        botMoveAxis(bot, 0, (dx / d) * push);
+        botMoveAxis(bot, 2, (dz / d) * push);
+      }
+    }
 
     // combat
     let target = null, targetDist = Infinity;
