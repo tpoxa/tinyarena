@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TINY ARENA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- join screen -->
+  <div id="join" class="join">
+    <div class="join-noise"></div>
+    <div class="join-inner">
+      <div class="join-logo">
+        <span class="join-logo-tiny">TINY</span>
+        <span class="join-logo-arena">ARENA</span>
+      </div>
+      <div class="join-sub">// BROWSER DEATHMATCH · FRAG LIMIT 15</div>
+      <form id="join-form" autocomplete="off">
+        <input id="join-name" type="text" maxlength="14" placeholder="CALLSIGN" spellcheck="false" />
+        <button id="join-btn" type="submit">ENTER ARENA</button>
+      </form>
+      <div class="join-keys">
+        <span><b>WASD</b> move</span>
+        <span><b>SPACE</b> jump</span>
+        <span><b>MOUSE</b> aim + fire</span>
+        <span><b>1·2·3 / wheel</b> weapons</span>
+        <span><b>TAB</b> scores</span>
+      </div>
+      <div id="join-status" class="join-status"></div>
+    </div>
+  </div>
+
+  <!-- in-game HUD -->
+  <div id="hud" class="hud hidden">
+    <div class="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
+    <div id="hitmarker" class="hitmarker"><i></i><i></i><i></i><i></i></div>
+    <div id="dmg-vignette" class="dmg-vignette"></div>
+    <div id="killfeed" class="killfeed"></div>
+    <div id="center-msg" class="center-msg"></div>
+    <div id="pickup-msg" class="pickup-msg"></div>
+
+    <div class="hud-bottom">
+      <div class="stat stat-hp">
+        <div class="stat-icon">✚</div>
+        <div id="hud-hp" class="stat-val">100</div>
+      </div>
+      <div class="stat stat-armor">
+        <div class="stat-icon">▣</div>
+        <div id="hud-armor" class="stat-val">0</div>
+      </div>
+      <div class="stat stat-ammo">
+        <div id="hud-ammo" class="stat-val">100</div>
+        <div id="hud-weapon" class="stat-label">MACHINEGUN</div>
+      </div>
+    </div>
+
+    <div id="weapon-slots" class="weapon-slots">
+      <div class="wslot active" data-w="0"><b>1</b>MG</div>
+      <div class="wslot" data-w="1"><b>2</b>RL</div>
+      <div class="wslot" data-w="2"><b>3</b>RG</div>
+    </div>
+
+    <div id="hud-meta" class="hud-meta"><span id="hud-ping">–</span> ms · <span id="hud-fps">–</span> fps</div>
+
+    <div id="scoreboard" class="scoreboard hidden">
+      <div class="sb-title">TINY ARENA · DEATHMATCH · FRAG LIMIT <span id="sb-limit">15</span></div>
+      <table><thead><tr><th></th><th>PLAYER</th><th>FRAGS</th><th>DEATHS</th></tr></thead>
+      <tbody id="sb-body"></tbody></table>
+    </div>
+
+    <div id="death-overlay" class="death-overlay hidden">
+      <div id="death-msg" class="death-msg">FRAGGED BY CRASH-BOT</div>
+      <div id="death-count" class="death-count">3</div>
+    </div>
+
+    <div id="win-overlay" class="win-overlay hidden">
+      <div id="win-msg" class="win-msg">CRASH-BOT WINS</div>
+      <div class="win-sub">next round starting…</div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

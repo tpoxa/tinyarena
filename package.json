@@ -1,0 +1,16 @@
+{
+  "name": "tiny-arena",
+  "version": "0.1.0",
+  "description": "Quake 3 Arena-style browser FPS — Three.js + Node/WebSocket deathmatch",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "smoke": "node server/smoke.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "three": "^0.172.0",
+    "ws": "^8.18.0"
+  }
+}
