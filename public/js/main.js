@@ -85,11 +85,13 @@ net.on('die', (msg) => {
   const killer = playerName(msg.killer);
   const victim = playerName(msg.victim);
   const suicide = msg.killer === msg.victim;
-  hud.killRow(suicide ? 'THE VOID' : killer, victim, msg.w, msg.killer === net.myId || msg.victim === net.myId);
+  const voidDeath = suicide && msg.w === -1; // weapon -1 = fell out of the world
+  hud.killRow(voidDeath ? 'THE VOID' : killer, victim, msg.w,
+    msg.killer === net.myId || msg.victim === net.myId, suicide && !voidDeath);
   if (msg.victim === net.myId) {
     player.die();
     audio.play('die');
-    hud.showDeath(suicide ? null : killer);
+    hud.showDeath(suicide ? null : killer, voidDeath);
   } else if (msg.killer === net.myId) {
     audio.play('frag');
     hud.centerMessage(`YOU FRAGGED ${victim.toUpperCase()}`);

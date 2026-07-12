@@ -48,11 +48,13 @@ export class Hud {
     });
   }
 
-  killRow(killerName, victimName, weaponId, involvesMe) {
+  killRow(killerName, victimName, weaponId, involvesMe, selfKill = false) {
     const row = document.createElement('div');
     row.className = 'kf-row' + (involvesMe ? ' me' : '');
     const verb = WEAPON_VERBS[weaponId] ?? 'fragged';
-    row.innerHTML = `<span class="k">${killerName}</span><span class="w">${verb}</span><span class="v">${victimName}</span>`;
+    row.innerHTML = selfKill
+      ? `<span class="v">${victimName}</span><span class="w">self-fragged</span>`
+      : `<span class="k">${killerName}</span><span class="w">${verb}</span><span class="v">${victimName}</span>`;
     this.killfeed.appendChild(row);
     while (this.killfeed.children.length > 6) this.killfeed.firstChild.remove();
     setTimeout(() => row.remove(), 6000);
@@ -83,8 +85,10 @@ export class Hud {
     this.hitmarker.classList.add('pop');
   }
 
-  showDeath(killerName) {
-    this.deathMsg.textContent = killerName ? `FRAGGED BY ${killerName.toUpperCase()}` : 'YOU FELL INTO THE VOID';
+  showDeath(killerName, voidDeath = false) {
+    this.deathMsg.textContent = voidDeath
+      ? 'YOU FELL INTO THE VOID'
+      : killerName ? `FRAGGED BY ${killerName.toUpperCase()}` : 'YOU FRAGGED YOURSELF';
     this.deathOverlay.classList.remove('hidden');
     this.respawnAt = performance.now() / 1000 + 3;
   }
