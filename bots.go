@@ -1,0 +1,164 @@
+package main
+
+import (
+	"math"
+	"math/rand"
+)
+
+var botNames = []string{"CRASH", "ORBB", "SARGE", "MYNX", "BITTERMAN", "PHOBOS"}
+
+var botHalf = Vec3{0.4, 0.9, 0.4}
+
+// visibility graph over the floor waypoints: bots only walk edges with clear line of sight
+func (g *Game) buildNavEdges() {
+	nodes := g.arena.NavNodes
+	g.navEdges = make([][]int, len(nodes))
+	for i, a := range nodes {
+		for j, b := range nodes {
+			if i == j {
+				continue
+			}
+			d := Vec3{b[0] - a[0], 0, b[2] - a[2]}
+			if math.Hypot(d[0], d[2]) > 26 {
+				continue
+			}
+			t, hit := g.raycastWorld(Vec3{a[0], a[1] + 1.1, a[2]}, d)
+			if !hit || t >= 1 {
+				g.navEdges[i] = append(g.navEdges[i], j)
+			}
+		}
+	}
+}
+
+func (g *Game) nearestNode(pos Vec3) int {
+	best, bestD := 0, math.Inf(1)
+	for i, n := range g.arena.NavNodes {
+		d := (pos[0]-n[0])*(pos[0]-n[0]) + (pos[2]-n[2])*(pos[2]-n[2])
+		if d < bestD {
+			bestD, best = d, i
+		}
+	}
+	return best
+}
+
+func (g *Game) botMoveAxis(bot *Player, axis int, delta float64) {
+	if delta == 0 {
+		return
+	}
+	p := bot.Pos
+	p[axis] += delta
+	c := Vec3{p[0], p[1] + botHalf[1], p[2]}
+	for _, b := range g.arena.Boxes {
+		mn, mx := boxMin(b), boxMax(b)
+		if c[0]+botHalf[0] > mn[0] && c[0]-botHalf[0] < mx[0] &&
+			c[1]+botHalf[1] > mn[1] && c[1]-botHalf[1] < mx[1] &&
+			c[2]+botHalf[2] > mn[2] && c[2]-botHalf[2] < mx[2] {
+			return // blocked on this axis; slide along the other
+		}
+	}
+	bot.Pos = p
+}
+
+// returns distance if the bot has line of sight to the target, else -1
+func (g *Game) botCanSee(bot, target *Player) float64 {
+	a, b := eyePos(bot), eyePos(target)
+	d := Vec3{b[0] - a[0], b[1] - a[1], b[2] - a[2]}
+	dist := math.Hypot(math.Hypot(d[0], d[1]), d[2])
+	if dist > 55 {
+		return -1
+	}
+	if t, hit := g.raycastWorld(a, d); hit && t < 0.98 {
+		return -1
+	}
+	return dist
+}
+
+func (g *Game) stepBots(dt float64) {
+	t := nowSec()
+	for _, bot := range g.players {
+		if !bot.Bot || bot.Dead {
+			continue
+		}
+
+		// walk the waypoint graph edge by edge — every edge is wall-free by construction
+		if bot.NodeI < 0 {
+			bot.NodeI = g.nearestNode(bot.Pos)
+			bot.PrevI = -1
+		}
+		wp := g.arena.NavNodes[bot.NodeI]
+		if math.Hypot(bot.Pos[0]-wp[0], bot.Pos[2]-wp[2]) < 1.2 {
+			var nbrs []int
+			for _, j := range g.navEdges[bot.NodeI] {
+				if j != bot.PrevI {
+					nbrs = append(nbrs, j)
+				}
+			}
+			if len(nbrs) == 0 {
+				nbrs = g.navEdges[bot.NodeI]
+			}
+			bot.PrevI = bot.NodeI
+			if len(nbrs) > 0 {
+				bot.NodeI = nbrs[rand.Intn(len(nbrs))]
+			} else {
+				bot.NodeI = g.nearestNode(bot.Pos)
+			}
+			wp = g.arena.NavNodes[bot.NodeI]
+		}
+		mv := norm(Vec3{wp[0] - bot.Pos[0], 0, wp[2] - bot.Pos[2]})
+		const speed = 6.5
+		g.botMoveAxis(bot, 0, mv[0]*speed*dt)
+		g.botMoveAxis(bot, 2, mv[2]*speed*dt)
+		bot.Pos[1] = 0.2 // bots live on the main floor
+
+		// don't stand inside other bodies
+		for _, o := range g.players {
+			if o.ID == bot.ID || o.Dead {
+				continue
+			}
+			dx, dz := bot.Pos[0]-o.Pos[0], bot.Pos[2]-o.Pos[2]
+			d2 := dx*dx + dz*dz
+			if d2 < 0.81 && d2 > 1e-6 {
+				d := math.Sqrt(d2)
+				push := (0.9 - d) * 0.5
+				g.botMoveAxis(bot, 0, dx/d*push)
+				g.botMoveAxis(bot, 2, dz/d*push)
+			}
+		}
+
+		// combat
+		var target *Player
+		targetDist := math.Inf(1)
+		for _, p := range g.players {
+			if p.ID == bot.ID || p.Dead {
+				continue
+			}
+			if d := g.botCanSee(bot, p); d >= 0 && d < targetDist {
+				target, targetDist = p, d
+			}
+		}
+		if target != nil {
+			a, b := eyePos(bot), eyePos(target)
+			dir := norm(Vec3{b[0] - a[0], b[1] - a[1], b[2] - a[2]})
+			bot.Yaw = math.Atan2(-dir[0], -dir[2])
+			bot.Pitch = math.Asin(math.Max(-1, math.Min(1, dir[1])))
+			if t >= bot.BotFireAt {
+				w := &g.arena.Weapons[0]
+				if targetDist > 9 && bot.Ammo["rockets"] > 0 && rand.Float64() < 0.35 {
+					w = &g.arena.Weapons[1]
+				}
+				const err = 0.13
+				shotDir := norm(Vec3{
+					dir[0] + (rand.Float64()-0.5)*err,
+					dir[1] + (rand.Float64()-0.5)*err,
+					dir[2] + (rand.Float64()-0.5)*err,
+				})
+				e := eyePos(bot)
+				g.handleFire(bot, w.ID, e[:], shotDir[:])
+				bot.BotFireAt = t + w.Rate + 0.35 + rand.Float64()*0.4
+			}
+		} else {
+			bot.Yaw = math.Atan2(-mv[0], -mv[2])
+			bot.Pitch = 0
+		}
+	}
+}

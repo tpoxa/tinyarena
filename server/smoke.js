@@ -1,7 +1,6 @@
 // Protocol smoke test: two clients join, A rails B until a frag lands.
-// Run with the server already up: node server/smoke.js
-
-import WebSocket from 'ws';
+// Uses Node's built-in WebSocket (Node 22+). Run with a bot-free server:
+//   PORT=3388 BOTS=0 ./tiny-arena-server &  node server/smoke.js
 
 const URL = process.env.URL || 'ws://localhost:3388';
 const results = { welcomeA: false, welcomeB: false, snap: false, hit: false, die: false, spawnSeen: false };
@@ -9,18 +8,17 @@ const results = { welcomeA: false, welcomeB: false, snap: false, hit: false, die
 function client(name) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(URL);
-    const c = { ws, id: null, name, msgs: [], you: null, players: [] };
-    ws.on('open', () => ws.send(JSON.stringify({ t: 'join', name })));
-    ws.on('message', (raw) => {
-      const m = JSON.parse(raw);
-      c.msgs.push(m);
+    const c = { ws, id: null, name, you: null, players: [] };
+    ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name }));
+    ws.onmessage = (ev) => {
+      const m = JSON.parse(ev.data);
       if (m.t === 'welcome') { c.id = m.id; resolve(c); }
       if (m.t === 'snap') { c.you = m.you; c.players = m.players; results.snap = true; }
       if (m.t === 'hit') results.hit = true;
-      if (m.t === 'die') results.die = true;
+      if (m.t === 'die') { results.die = true; if (m.victim === c.id) c.dead = true; }
       if (m.t === 'spawn' && m.id === c.id) { c.spawn = m; results.spawnSeen = true; }
-    });
-    ws.on('error', reject);
+    };
+    ws.onerror = (e) => reject(new Error(`${name}: ${e.message ?? 'ws error'}`));
     setTimeout(() => reject(new Error(`${name}: no welcome`)), 4000);
   });
 }
@@ -44,9 +42,7 @@ const stateTimer = setInterval(() => { state(A.ws, posA, 0); state(B.ws, posB, 0
 await sleep(300);
 
 // A fires railgun +x at B's chest until B dies (rail: 90 dmg, needs 2 shots)
-let bDead = false;
-B.ws.on('message', (raw) => { const m = JSON.parse(raw); if (m.t === 'die' && m.victim === B.id) bDead = true; });
-for (let i = 0; i < 4 && !bDead; i++) {
+for (let i = 0; i < 4 && !B.dead; i++) {
   A.ws.send(JSON.stringify({ t: 'fire', w: 2, o: [posA[0], posA[1] + 1.62, posA[2]], d: [1, -0.14, 0] }));
   await sleep(1600); // rail cooldown
 }

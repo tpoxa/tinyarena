@@ -366,9 +366,11 @@ export class LocalPlayer {
     for (let i = this.localRockets.length - 1; i >= 0; i--) {
       const r = this.localRockets[i];
       const delta = r.dir.clone().multiplyScalar(w.speed * dt);
-      const t = raycastWorld([r.pos.x, r.pos.y, r.pos.z], [delta.x, delta.y, delta.z]);
+      const prev = [r.pos.x, r.pos.y, r.pos.z];
+      const t = raycastWorld(prev, [delta.x, delta.y, delta.z]);
       if (t !== null && t <= 1) {
         const at = r.pos.clone().addScaledVector(delta, t);
+        this.effects.rocketTrail(prev, [at.x, at.y, at.z]);
         this.effects.explosion([at.x, at.y, at.z]);
         this.audio.play('boom');
         this.selfKnockback(at, w);
@@ -377,6 +379,7 @@ export class LocalPlayer {
         continue;
       }
       r.pos.add(delta);
+      this.effects.rocketTrail(prev, [r.pos.x, r.pos.y, r.pos.z]);
       r.mesh.position.copy(r.pos);
       r.mesh.lookAt(r.pos.clone().add(r.dir));
       if (performance.now() / 1000 - r.born > 6 || r.pos.y < -30) {

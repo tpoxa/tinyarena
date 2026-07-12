@@ -99,20 +99,25 @@ export class Effects {
   rocketMesh() {
     const g = new THREE.Group();
     const body = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.07, 0.11, 0.42, 8),
-      new THREE.MeshLambertMaterial({ color: 0x33375e }),
+      new THREE.CylinderGeometry(0.09, 0.13, 0.5, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffb43d }),
     );
     body.rotation.x = Math.PI / 2;
     const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(0.09, 0.34, 8),
-      new THREE.MeshBasicMaterial({ color: 0xff9a3d, transparent: true, opacity: 0.9 }),
+      new THREE.ConeGeometry(0.15, 0.6, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff7b2e, transparent: true, opacity: 0.95 }),
     );
     flame.rotation.x = -Math.PI / 2;
-    flame.position.z = 0.35;
-    const light = new THREE.PointLight(0xff9a3d, 25, 9);
+    flame.position.z = 0.5;
+    const light = new THREE.PointLight(0xff9a3d, 30, 10);
     g.add(body, flame, light);
     this.scene.add(g);
     return g;
+  }
+
+  // short-lived glowing segment behind a moving rocket — makes its path readable
+  rocketTrail(a, b) {
+    this.beamBetween(a, b, 0.05, 0xff9a3d, 0.3, 0.5);
   }
 
   removeRocket(mesh) {

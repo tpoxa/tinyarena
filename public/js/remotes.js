@@ -177,9 +177,12 @@ export class Remotes {
     for (const mesh of this.rockets.values()) {
       const tg = mesh.userData.target;
       if (!tg) continue;
+      const prev = [mesh.position.x, mesh.position.y, mesh.position.z];
       mesh.position.lerp(tg, Math.min(1, dt * 12));
       const d = mesh.userData.dir;
       if (d) mesh.lookAt(mesh.position.clone().add(d));
+      const moved = (mesh.position.x - prev[0]) ** 2 + (mesh.position.y - prev[1]) ** 2 + (mesh.position.z - prev[2]) ** 2;
+      if (moved > 0.02) this.effects.rocketTrail(prev, [mesh.position.x, mesh.position.y, mesh.position.z]);
     }
   }
 }

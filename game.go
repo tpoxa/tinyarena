@@ -1,0 +1,720 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"log"
+	"math"
+	"math/rand"
+	"regexp"
+	"sync/atomic"
+	"time"
+)
+
+const (
+	playerRadius = 0.9
+	pickupRadius = 1.5
+	eyeHeight    = 1.62
+)
+
+var colors = []string{"#5b6cff", "#27e0ff", "#ff3df0", "#ff9a3d", "#7dff3d", "#ff4b4b", "#ffe83d", "#3dffc8"}
+var nameRe = regexp.MustCompile(`[^\w\-. ]`)
+
+type Player struct {
+	ID     int
+	Name   string
+	Color  string
+	Bot    bool
+	Conn   *Conn
+	Pos    Vec3
+	Yaw    float64
+	Pitch  float64
+	HP     int
+	Armor  int
+	Ammo   map[string]int
+	Weapon int
+	Dead   bool
+
+	RespawnAt float64
+	Frags     int
+	Deaths    int
+	LastFire  map[int]float64
+	LastSeen  float64
+
+	// bot brain
+	NodeI     int
+	PrevI     int
+	BotFireAt float64
+}
+
+type Rocket struct {
+	ID    int
+	Owner int
+	Pos   Vec3
+	Dir   Vec3
+	Born  float64
+}
+
+type PickupState struct {
+	Spec      PickupSpec
+	Active    bool
+	RespawnAt float64
+}
+
+type Game struct {
+	arena            *Arena
+	players          map[int]*Player
+	rockets          map[int]*Rocket
+	pickups          map[string]*PickupState
+	navEdges         [][]int
+	nextID           int
+	nextRocketID     int
+	matchLockedUntil float64
+	resetAt          float64
+	humans           atomic.Int64 // read by /healthz outside the game goroutine
+}
+
+func nowSec() float64 { return float64(time.Now().UnixNano()) / 1e9 }
+
+func newGame(arena *Arena) *Game {
+	g := &Game{
+		arena:        arena,
+		players:      map[int]*Player{},
+		rockets:      map[int]*Rocket{},
+		pickups:      map[string]*PickupState{},
+		nextID:       1,
+		nextRocketID: 1,
+	}
+	for _, spec := range arena.Pickups {
+		g.pickups[spec.ID] = &PickupState{Spec: spec, Active: true}
+	}
+	g.buildNavEdges()
+	return g
+}
+
+func copyAmmo(m map[string]int) map[string]int {
+	out := make(map[string]int, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
+}
+
+func (g *Game) makePlayer(name string, bot bool, conn *Conn) *Player {
+	id := g.nextID
+	g.nextID++
+	p := &Player{
+		ID: id, Name: name, Bot: bot, Conn: conn,
+		Color:     colors[id%len(colors)],
+		Pos:       Vec3{0, 0.2, 0},
+		HP:        g.arena.MaxHP,
+		Ammo:      copyAmmo(g.arena.StartAmmo),
+		Dead:      true,
+		RespawnAt: nowSec() + 0.5,
+		LastFire:  map[int]float64{},
+		LastSeen:  nowSec(),
+		NodeI:     -1, PrevI: -1,
+	}
+	g.players[id] = p
+	return p
+}
+
+func (g *Game) humanCount() int {
+	n := 0
+	for _, p := range g.players {
+		if !p.Bot {
+			n++
+		}
+	}
+	return n
+}
+
+// ---------------------------------------------------------------- messaging
+
+func mustJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+func (g *Game) send(p *Player, msg any) {
+	if p.Conn != nil {
+		p.Conn.trySend(mustJSON(msg))
+	}
+}
+
+func (g *Game) broadcast(msg any, exceptID int) {
+	b := mustJSON(msg)
+	for _, p := range g.players {
+		if p.Bot || p.ID == exceptID || p.Conn == nil {
+			continue
+		}
+		p.Conn.trySend(b)
+	}
+}
+
+func publicInfo(p *Player) map[string]any {
+	return map[string]any{
+		"id": p.ID, "name": p.Name, "color": p.Color, "bot": p.Bot,
+		"frags": p.Frags, "deaths": p.Deaths, "dead": p.Dead,
+	}
+}
+
+// ---------------------------------------------------------------- spawning
+
+func (g *Game) pickSpawn(forPlayer *Player) Spawn {
+	pool := g.arena.Spawns
+	if forPlayer.Bot {
+		pool = nil
+		for _, s := range g.arena.Spawns {
+			if s.P[1] < 1 { // bots only navigate the main floor
+				pool = append(pool, s)
+			}
+		}
+	}
+	best, bestScore := pool[0], -1.0
+	for _, s := range pool {
+		score := math.Inf(1)
+		for _, p := range g.players {
+			if p.ID == forPlayer.ID || p.Dead {
+				continue
+			}
+			d := dist3(p.Pos, s.P)
+			score = math.Min(score, d*d)
+		}
+		if math.IsInf(score, 1) {
+			score = rand.Float64() * 1000
+		}
+		if score > bestScore {
+			bestScore, best = score, s
+		}
+	}
+	return best
+}
+
+func (g *Game) respawn(p *Player) {
+	s := g.pickSpawn(p)
+	p.Pos = s.P
+	p.NodeI, p.PrevI = -1, -1
+	p.Yaw = s.Yaw
+	p.Pitch = 0
+	p.HP = g.arena.MaxHP
+	p.Armor = 0
+	p.Ammo = copyAmmo(g.arena.StartAmmo)
+	if p.Bot {
+		p.Weapon = 0
+	}
+	p.Dead = false
+	g.broadcast(map[string]any{"t": "spawn", "id": p.ID, "p": p.Pos, "yaw": p.Yaw}, 0)
+}
+
+// ---------------------------------------------------------------- combat
+
+func eyePos(p *Player) Vec3 { return Vec3{p.Pos[0], p.Pos[1] + eyeHeight, p.Pos[2]} }
+
+func (g *Game) applyDamage(target *Player, dmg int, attacker *Player, weaponID int, knock *Vec3) {
+	if target.Dead || nowSec() < g.matchLockedUntil {
+		return
+	}
+	remaining := dmg
+	if target.Armor > 0 {
+		absorbed := int(math.Round(float64(dmg) * g.arena.ArmorAbsorb))
+		if absorbed > target.Armor {
+			absorbed = target.Armor
+		}
+		target.Armor -= absorbed
+		remaining = dmg - absorbed
+	}
+	target.HP -= remaining
+	if knock != nil && !target.Bot {
+		g.send(target, map[string]any{"t": "push", "v": *knock})
+	}
+	if attacker != nil && attacker.ID != target.ID && !attacker.Bot {
+		g.send(attacker, map[string]any{"t": "hit", "target": target.ID, "dmg": dmg})
+	}
+	if !target.Bot && attacker != nil {
+		g.send(target, map[string]any{"t": "dmg", "from": attacker.ID, "amount": dmg, "p": attacker.Pos})
+	}
+	if target.HP <= 0 {
+		g.kill(target, attacker, weaponID)
+	}
+}
+
+func (g *Game) kill(victim, attacker *Player, weaponID int) {
+	if victim.Dead {
+		return
+	}
+	victim.Dead = true
+	victim.Deaths++
+	victim.RespawnAt = nowSec() + g.arena.RespawnSeconds
+	suicide := attacker == nil || attacker.ID == victim.ID
+	killerID := victim.ID
+	if suicide {
+		if victim.Frags > 0 {
+			victim.Frags--
+		}
+	} else {
+		attacker.Frags++
+		killerID = attacker.ID
+	}
+	g.broadcast(map[string]any{"t": "die", "victim": victim.ID, "killer": killerID, "w": weaponID}, 0)
+	if !suicide && attacker.Frags >= g.arena.FragLimit && nowSec() >= g.matchLockedUntil {
+		g.broadcast(map[string]any{"t": "win", "id": attacker.ID, "name": attacker.Name, "frags": attacker.Frags}, 0)
+		g.matchLockedUntil = nowSec() + 6
+		g.resetAt = g.matchLockedUntil
+	}
+}
+
+func (g *Game) resetMatch() {
+	for _, p := range g.players {
+		p.Frags, p.Deaths = 0, 0
+		p.Dead = true
+		p.RespawnAt = nowSec() + 0.5
+	}
+	for _, pk := range g.pickups {
+		pk.Active = true
+		pk.RespawnAt = 0
+	}
+	g.broadcast(map[string]any{"t": "reset"}, 0)
+}
+
+// segment vs sphere around player chest; returns t in [0,1]
+func segmentVsPlayer(a, d Vec3, p *Player) (float64, bool) {
+	c := Vec3{p.Pos[0], p.Pos[1] + 0.9, p.Pos[2]}
+	m := Vec3{a[0] - c[0], a[1] - c[1], a[2] - c[2]}
+	dd := d[0]*d[0] + d[1]*d[1] + d[2]*d[2]
+	if dd < 1e-9 {
+		return 0, false
+	}
+	b := (m[0]*d[0] + m[1]*d[1] + m[2]*d[2]) / dd
+	cc := (m[0]*m[0] + m[1]*m[1] + m[2]*m[2] - playerRadius*playerRadius) / dd
+	disc := b*b - cc
+	if disc < 0 {
+		return 0, false
+	}
+	t := -b - math.Sqrt(disc)
+	if t < 0 || t > 1 {
+		return 0, false
+	}
+	return t, true
+}
+
+func (g *Game) fireHitscan(shooter *Player, w *Weapon, origin, dir Vec3) {
+	delta := Vec3{dir[0] * w.Range, dir[1] * w.Range, dir[2] * w.Range}
+	tWall := 1.0
+	if t, ok := g.raycastWorld(origin, delta); ok {
+		tWall = t
+	}
+	type hit struct {
+		p *Player
+		t float64
+	}
+	var hits []hit
+	for _, p := range g.players {
+		if p.ID == shooter.ID || p.Dead {
+			continue
+		}
+		if t, ok := segmentVsPlayer(origin, delta, p); ok && t < tWall {
+			hits = append(hits, hit{p, t})
+		}
+	}
+	// nearest first; machinegun stops at the first body, rail penetrates
+	for i := 1; i < len(hits); i++ {
+		for j := i; j > 0 && hits[j].t < hits[j-1].t; j-- {
+			hits[j], hits[j-1] = hits[j-1], hits[j]
+		}
+	}
+	victims := hits
+	if w.Key != "rg" && len(hits) > 1 {
+		victims = hits[:1]
+	}
+	for _, h := range victims {
+		knock := Vec3{dir[0] * w.Knock, math.Abs(dir[1])*w.Knock*0.3 + 0.5, dir[2] * w.Knock}
+		g.applyDamage(h.p, int(w.Dmg), shooter, w.ID, &knock)
+	}
+	end := Vec3{origin[0] + delta[0]*tWall, origin[1] + delta[1]*tWall, origin[2] + delta[2]*tWall}
+	exceptID := 0
+	if !shooter.Bot {
+		exceptID = shooter.ID
+	}
+	g.broadcast(map[string]any{"t": "shot", "id": shooter.ID, "w": w.ID, "o": origin, "e": end}, exceptID)
+}
+
+func (g *Game) spawnRocket(shooter *Player, origin, dir Vec3) {
+	id := g.nextRocketID
+	g.nextRocketID++
+	g.rockets[id] = &Rocket{ID: id, Owner: shooter.ID, Pos: origin, Dir: dir, Born: nowSec()}
+}
+
+func (g *Game) explodeRocket(r *Rocket, at Vec3, directVictimID int) {
+	delete(g.rockets, r.ID)
+	w := &g.arena.Weapons[1]
+	owner := g.players[r.Owner]
+	g.broadcast(map[string]any{"t": "boom", "p": at, "owner": r.Owner}, 0)
+	for _, p := range g.players {
+		if p.Dead || p.ID == directVictimID { // direct hit already paid full damage
+			continue
+		}
+		c := Vec3{p.Pos[0], p.Pos[1] + 0.9, p.Pos[2]}
+		d := dist3(c, at)
+		if d > w.SplashRadius {
+			continue
+		}
+		falloff := 1 - d/w.SplashRadius
+		dmg := int(math.Round(w.SplashDmg * falloff))
+		isSelf := owner != nil && p.ID == owner.ID
+		if isSelf {
+			dmg = int(math.Round(float64(dmg) * g.arena.SelfSplashScale))
+		}
+		kn := norm(Vec3{c[0] - at[0], c[1] - at[1] + 0.6, c[2] - at[2]})
+		kv := Vec3{kn[0] * w.Knock * falloff, kn[1] * w.Knock * falloff, kn[2] * w.Knock * falloff}
+		attacker := owner
+		if attacker == nil {
+			attacker = p
+		}
+		if isSelf {
+			// self knockback is applied client-side for crisp rocket jumps
+			g.applyDamage(p, dmg, attacker, w.ID, nil)
+		} else {
+			g.applyDamage(p, dmg, attacker, w.ID, &kv)
+		}
+	}
+}
+
+func (g *Game) stepRockets(dt float64) {
+	w := &g.arena.Weapons[1]
+	ids := make([]int, 0, len(g.rockets))
+	for id := range g.rockets {
+		ids = append(ids, id)
+	}
+	for _, id := range ids {
+		r, ok := g.rockets[id]
+		if !ok {
+			continue
+		}
+		if nowSec()-r.Born > 6 {
+			g.explodeRocket(r, r.Pos, 0)
+			continue
+		}
+		delta := Vec3{r.Dir[0] * w.Speed * dt, r.Dir[1] * w.Speed * dt, r.Dir[2] * w.Speed * dt}
+		tHit := 2.0
+		if t, ok := g.raycastWorld(r.Pos, delta); ok {
+			tHit = t
+		}
+		var directVictim *Player
+		for _, p := range g.players {
+			if p.ID == r.Owner || p.Dead {
+				continue
+			}
+			if t, ok := segmentVsPlayer(r.Pos, delta, p); ok && t < tHit {
+				tHit = t
+				directVictim = p
+			}
+		}
+		if tHit <= 1 {
+			at := Vec3{r.Pos[0] + delta[0]*tHit, r.Pos[1] + delta[1]*tHit, r.Pos[2] + delta[2]*tHit}
+			victimID := 0
+			if directVictim != nil {
+				owner := g.players[r.Owner]
+				if owner == nil {
+					owner = directVictim
+				}
+				g.applyDamage(directVictim, int(w.Dmg), owner, w.ID, nil)
+				victimID = directVictim.ID
+			}
+			g.explodeRocket(r, at, victimID)
+			continue
+		}
+		r.Pos = Vec3{r.Pos[0] + delta[0], r.Pos[1] + delta[1], r.Pos[2] + delta[2]}
+		if r.Pos[1] < g.arena.KillY {
+			delete(g.rockets, id)
+		}
+	}
+}
+
+func finite3(v []float64) bool {
+	if len(v) != 3 {
+		return false
+	}
+	for _, x := range v {
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			return false
+		}
+	}
+	return true
+}
+
+func (g *Game) handleFire(p *Player, weaponID int, o, d []float64) {
+	if p.Dead || nowSec() < g.matchLockedUntil {
+		return
+	}
+	if weaponID < 0 || weaponID >= len(g.arena.Weapons) {
+		return
+	}
+	w := &g.arena.Weapons[weaponID]
+	t := nowSec()
+	if t-p.LastFire[w.ID] < w.Rate*0.9 {
+		return
+	}
+	if p.Ammo[w.AmmoType] <= 0 {
+		return
+	}
+	if !finite3(o) || !finite3(d) {
+		return
+	}
+	origin := Vec3{o[0], o[1], o[2]}
+	if dist3(origin, eyePos(p)) > 3 { // origin must be near the player the server knows about
+		return
+	}
+	dir := norm(Vec3{d[0], d[1], d[2]})
+	p.LastFire[w.ID] = t
+	p.Ammo[w.AmmoType]--
+	if w.Hitscan {
+		// nudge off any surface the shooter is flush against (t=0 self-eat)
+		no := Vec3{origin[0] + dir[0]*0.05, origin[1] + dir[1]*0.05, origin[2] + dir[2]*0.05}
+		g.fireHitscan(p, w, no, dir)
+	} else {
+		// matches the client's local rocket spawn offset
+		no := Vec3{origin[0] + dir[0]*0.6, origin[1] + dir[1]*0.6 - 0.15, origin[2] + dir[2]*0.6}
+		g.spawnRocket(p, no, dir)
+	}
+}
+
+// ---------------------------------------------------------------- pickups
+
+func (g *Game) stepPickups() {
+	t := nowSec()
+	for _, id := range g.pickupOrder() {
+		pk := g.pickups[id]
+		if !pk.Active {
+			if t >= pk.RespawnAt {
+				pk.Active = true
+				g.broadcast(map[string]any{"t": "pickup", "id": pk.Spec.ID, "active": true}, 0)
+			}
+			continue
+		}
+		for _, p := range g.players {
+			if p.Dead {
+				continue
+			}
+			c := Vec3{p.Pos[0], p.Pos[1] + 0.9, p.Pos[2]}
+			if dist3(c, pk.Spec.P) > pickupRadius {
+				continue
+			}
+			def := g.arena.PickupDefs[pk.Spec.Type]
+			used := false
+			if def.HP > 0 {
+				cap := g.arena.MaxHP
+				if def.Overheal {
+					cap = g.arena.MaxOverheal
+				}
+				if p.HP < cap {
+					p.HP = min(cap, p.HP+def.HP)
+					used = true
+				}
+			}
+			if def.Armor > 0 && p.Armor < g.arena.MaxArmor {
+				p.Armor = min(g.arena.MaxArmor, p.Armor+def.Armor)
+				used = true
+			}
+			if def.Ammo != "" && p.Ammo[def.Ammo] < g.arena.MaxAmmo[def.Ammo] {
+				p.Ammo[def.Ammo] = min(g.arena.MaxAmmo[def.Ammo], p.Ammo[def.Ammo]+def.Amount)
+				used = true
+			}
+			if !used {
+				continue
+			}
+			pk.Active = false
+			pk.RespawnAt = t + pk.Spec.Respawn
+			g.broadcast(map[string]any{"t": "pickup", "id": pk.Spec.ID, "active": false, "by": p.ID, "label": def.Label}, 0)
+			break
+		}
+	}
+}
+
+func (g *Game) pickupOrder() []string {
+	ids := make([]string, 0, len(g.arena.Pickups))
+	for _, spec := range g.arena.Pickups {
+		ids = append(ids, spec.ID)
+	}
+	return ids
+}
+
+// ---------------------------------------------------------------- tick + snapshots
+
+func (g *Game) tick(dt float64) {
+	t := nowSec()
+	for _, p := range g.players {
+		if p.Dead && t >= p.RespawnAt && (p.Bot || p.Conn != nil) {
+			g.respawn(p)
+		}
+		if !p.Dead && p.Pos[1] < g.arena.KillY {
+			g.kill(p, nil, -1)
+		}
+		if !p.Bot && p.Conn != nil && t-p.LastSeen > 15 {
+			p.Conn.ws.Close()
+		}
+	}
+	g.stepBots(dt)
+	g.stepRockets(dt)
+	g.stepPickups()
+	if g.resetAt > 0 && t >= g.resetAt {
+		g.resetAt = 0
+		g.resetMatch()
+	}
+}
+
+type snapPlayer struct {
+	I  int     `json:"i"`
+	P  Vec3    `json:"p"`
+	Yw float64 `json:"yw"`
+	Pt float64 `json:"pt"`
+	W  int     `json:"w"`
+	D  int     `json:"d"`
+	F  int     `json:"f"`
+	Dt int     `json:"dt"`
+}
+
+type snapRocket struct {
+	I int  `json:"i"`
+	O int  `json:"o"`
+	P Vec3 `json:"p"`
+	D Vec3 `json:"d"`
+}
+
+func (g *Game) sendSnapshots() {
+	players := make([]snapPlayer, 0, len(g.players))
+	for _, p := range g.players {
+		d := 0
+		if p.Dead {
+			d = 1
+		}
+		players = append(players, snapPlayer{
+			I:  p.ID,
+			P:  Vec3{round2(p.Pos[0]), round2(p.Pos[1]), round2(p.Pos[2])},
+			Yw: round3(p.Yaw), Pt: round3(p.Pitch),
+			W: p.Weapon, D: d, F: p.Frags, Dt: p.Deaths,
+		})
+	}
+	rockets := make([]snapRocket, 0, len(g.rockets))
+	for _, r := range g.rockets {
+		rockets = append(rockets, snapRocket{
+			I: r.ID, O: r.Owner,
+			P: Vec3{round2(r.Pos[0]), round2(r.Pos[1]), round2(r.Pos[2])},
+			D: Vec3{round2(r.Dir[0]), round2(r.Dir[1]), round2(r.Dir[2])},
+		})
+	}
+	ts := time.Now().UnixMilli()
+	for _, p := range g.players {
+		if p.Bot || p.Conn == nil {
+			continue
+		}
+		g.send(p, map[string]any{
+			"t": "snap", "ts": ts,
+			"players": players,
+			"rockets": rockets,
+			"you":     map[string]any{"hp": p.HP, "ar": p.Armor, "ammo": p.Ammo},
+		})
+	}
+}
+
+// ---------------------------------------------------------------- inbound
+
+type inMsg struct {
+	T    string          `json:"t"`
+	Name string          `json:"name"`
+	P    []float64       `json:"p"`
+	Yw   *float64        `json:"yw"`
+	Pt   *float64        `json:"pt"`
+	W    *int            `json:"w"`
+	O    []float64       `json:"o"`
+	D    []float64       `json:"d"`
+	Ts   json.RawMessage `json:"ts"`
+}
+
+func (g *Game) handleMessage(c *Conn, data []byte) {
+	var msg inMsg
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return
+	}
+
+	if c.player == nil {
+		if msg.T != "join" {
+			return
+		}
+		name := nameRe.ReplaceAllString(msg.Name, "")
+		if len(name) > 14 {
+			name = name[:14]
+		}
+		if name == "" {
+			name = "PLAYER"
+		}
+		taken := map[string]bool{}
+		for _, p := range g.players {
+			taken[p.Name] = true
+		}
+		candidate, n := name, 2
+		for taken[candidate] {
+			candidate = fmt.Sprintf("%s.%d", name, n)
+			n++
+		}
+		me := g.makePlayer(candidate, false, c)
+		c.player = me
+		infos := make([]map[string]any, 0, len(g.players))
+		for _, p := range g.players {
+			infos = append(infos, publicInfo(p))
+		}
+		pks := make([]map[string]any, 0, len(g.pickups))
+		for _, id := range g.pickupOrder() {
+			pks = append(pks, map[string]any{"id": id, "active": g.pickups[id].Active})
+		}
+		g.send(me, map[string]any{
+			"t": "welcome", "id": me.ID, "color": me.Color, "name": me.Name,
+			"players": infos, "pickups": pks, "fragLimit": g.arena.FragLimit,
+		})
+		g.broadcast(map[string]any{"t": "pjoin", "player": publicInfo(me)}, me.ID)
+		g.humans.Store(int64(g.humanCount()))
+		log.Printf("+ %s joined (%d humans online)", me.Name, g.humanCount())
+		return
+	}
+
+	me := c.player
+	me.LastSeen = nowSec()
+	switch msg.T {
+	case "state":
+		if me.Dead {
+			return
+		}
+		if finite3(msg.P) && math.Abs(msg.P[0]) < 500 && math.Abs(msg.P[1]) < 500 && math.Abs(msg.P[2]) < 500 {
+			me.Pos = Vec3{msg.P[0], msg.P[1], msg.P[2]}
+		}
+		if msg.Yw != nil && !math.IsNaN(*msg.Yw) && !math.IsInf(*msg.Yw, 0) {
+			me.Yaw = *msg.Yw
+		}
+		if msg.Pt != nil && !math.IsNaN(*msg.Pt) && !math.IsInf(*msg.Pt, 0) {
+			me.Pitch = *msg.Pt
+		}
+		if msg.W != nil && *msg.W >= 0 && *msg.W < len(g.arena.Weapons) {
+			me.Weapon = *msg.W
+		}
+	case "fire":
+		if msg.W != nil {
+			g.handleFire(me, *msg.W, msg.O, msg.D)
+		}
+	case "ping":
+		g.send(me, map[string]any{"t": "pong", "ts": msg.Ts})
+	}
+}
+
+func (g *Game) dropConn(c *Conn) {
+	if c.player == nil {
+		return
+	}
+	delete(g.players, c.player.ID)
+	g.broadcast(map[string]any{"t": "pleave", "id": c.player.ID}, 0)
+	g.humans.Store(int64(g.humanCount()))
+	log.Printf("- %s left", c.player.Name)
+	c.player = nil
+}
