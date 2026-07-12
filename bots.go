@@ -41,9 +41,10 @@ func (g *Game) nearestNode(pos Vec3) int {
 	return best
 }
 
-func (g *Game) botMoveAxis(bot *Player, axis int, delta float64) {
+// moves the bot along one axis unless world geometry blocks it; reports blockage
+func (g *Game) botMoveAxis(bot *Player, axis int, delta float64) bool {
 	if delta == 0 {
-		return
+		return false
 	}
 	p := bot.Pos
 	p[axis] += delta
@@ -53,10 +54,11 @@ func (g *Game) botMoveAxis(bot *Player, axis int, delta float64) {
 		if c[0]+botHalf[0] > mn[0] && c[0]-botHalf[0] < mx[0] &&
 			c[1]+botHalf[1] > mn[1] && c[1]-botHalf[1] < mx[1] &&
 			c[2]+botHalf[2] > mn[2] && c[2]-botHalf[2] < mx[2] {
-			return // blocked on this axis; slide along the other
+			return true // blocked on this axis; slide along the others
 		}
 	}
 	bot.Pos = p
+	return false
 }
 
 // returns distance if the bot has line of sight to the target, else -1
@@ -77,6 +79,40 @@ func (g *Game) stepBots(dt float64) {
 	t := nowSec()
 	for _, bot := range g.players {
 		if !bot.Bot || bot.Dead {
+			continue
+		}
+
+		// gravity + vertical collision: bots can be blasted into the air and off the map
+		bot.Vel[1] -= 22 * dt
+		if g.botMoveAxis(bot, 1, bot.Vel[1]*dt) {
+			if bot.Vel[1] < 0 {
+				bot.Grounded = true
+			}
+			bot.Vel[1] = 0
+		} else if bot.Vel[1] < -1 || bot.Vel[1] > 0.5 {
+			bot.Grounded = false
+		}
+
+		hSpeed := math.Hypot(bot.Vel[0], bot.Vel[2])
+		if bot.Grounded && hSpeed > 0 {
+			// skid friction after a knock
+			f := math.Max(0, 1-8*dt)
+			bot.Vel[0] *= f
+			bot.Vel[2] *= f
+			if math.Hypot(bot.Vel[0], bot.Vel[2]) < 1 {
+				bot.Vel[0], bot.Vel[2] = 0, 0
+			}
+		}
+
+		if !bot.Grounded || hSpeed >= 1 {
+			// airborne or skidding: pure ballistics, no steering
+			if g.botMoveAxis(bot, 0, bot.Vel[0]*dt) {
+				bot.Vel[0] = 0
+			}
+			if g.botMoveAxis(bot, 2, bot.Vel[2]*dt) {
+				bot.Vel[2] = 0
+			}
+			bot.NodeI = -1 // re-pick a waypoint after landing
 			continue
 		}
 
@@ -108,7 +144,6 @@ func (g *Game) stepBots(dt float64) {
 		const speed = 6.5
 		g.botMoveAxis(bot, 0, mv[0]*speed*dt)
 		g.botMoveAxis(bot, 2, mv[2]*speed*dt)
-		bot.Pos[1] = 0.2 // bots live on the main floor
 
 		// don't stand inside other bodies
 		for _, o := range g.players {

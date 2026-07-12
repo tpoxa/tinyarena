@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"math"
+	"os"
 )
 
 //go:embed public shared
@@ -89,6 +90,11 @@ type Arena struct {
 
 func loadArena() *Arena {
 	raw, err := assets.ReadFile("shared/arena.json")
+	if os.Getenv("DEV") == "1" { // match the DEV file server: live data from disk
+		if diskRaw, diskErr := os.ReadFile("shared/arena.json"); diskErr == nil {
+			raw, err = diskRaw, nil
+		}
+	}
 	if err != nil {
 		panic(err)
 	}

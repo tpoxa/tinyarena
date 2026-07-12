@@ -22,75 +22,88 @@ function nameSprite(name, color) {
   return spr;
 }
 
-// articulated neon arena droid; parts wired into userData for animation
-function playerMesh(color) {
+// friendly toy space-trooper: white armor, player-color accents, no scary bits.
+// parts wired into userData for animation; exported for the dev model viewer.
+export function playerMesh(color) {
   const g = new THREE.Group();
   const col = new THREE.Color(color);
-  const armor = new THREE.MeshLambertMaterial({ color: 0x23264a });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x14162e });
-  const glowMat = new THREE.MeshBasicMaterial({ color: col });
+  const white = new THREE.MeshLambertMaterial({ color: 0xdfe3ff });
+  const lightGrey = new THREE.MeshLambertMaterial({ color: 0xc9cef5 });
+  const joint = new THREE.MeshLambertMaterial({ color: 0x2a2e55 });
+  const accent = new THREE.MeshLambertMaterial({ color: col.clone().lerp(new THREE.Color(0xffffff), 0.15) });
+  const glowCyan = new THREE.MeshBasicMaterial({ color: 0x9be8ff });
 
-  // legs — pivot at the hip so they can swing
+  // stubby legs — pivot at the hip so they can swing
   function leg(x) {
     const hip = new THREE.Group();
-    hip.position.set(x, 0.88, 0);
-    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.42, 0.15), armor);
-    thigh.position.y = -0.21;
-    const shin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.12), dark);
-    shin.position.set(0, -0.6, 0.01);
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.08, 0.22), dark);
-    foot.position.set(0, -0.84, -0.04);
-    const kneeGlow = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.02), glowMat);
-    kneeGlow.position.set(0, -0.42, -0.08);
-    hip.add(thigh, shin, foot, kneeGlow);
+    hip.position.set(x, 0.72, 0);
+    const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.4, 4, 10), accent);
+    limb.position.y = -0.34;
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), joint);
+    foot.scale.set(1.1, 0.6, 1.3);
+    foot.position.set(0, -0.62, -0.02);
+    hip.add(limb, foot);
     return hip;
   }
-  const legL = leg(-0.11);
-  const legR = leg(0.11);
+  const legL = leg(-0.13);
+  const legR = leg(0.13);
 
-  // upper body — pivots at the waist so it can pitch with aim
+  // upper body — pivots so it can pitch with aim
   const upper = new THREE.Group();
   upper.position.y = 1.0;
 
-  const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.22), dark);
-  pelvis.position.y = -0.06;
-  const waist = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.2), armor);
-  waist.position.y = 0.1;
-  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.34, 0.26), armor);
-  chest.position.y = 0.36;
-  const core = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.02), glowMat);
-  core.position.set(0, 0.38, -0.14);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.35, 4, 14), white);
+  torso.position.y = 0.08;
+  const belly = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.05), accent);
+  belly.position.set(0, 0.12, -0.24);
+  const core = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.03), glowCyan);
+  core.position.set(0, 0.13, -0.265);
 
-  const shoulderL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.2), armor);
-  shoulderL.position.set(-0.3, 0.48, 0);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 12), white);
+  head.scale.set(1, 0.92, 1);
+  head.position.y = 0.62;
+  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), glowCyan);
+  eyeL.scale.set(1.2, 1.7, 0.5);
+  eyeL.position.set(-0.06, 0.64, -0.172);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = 0.06;
+  const earL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), accent);
+  earL.position.set(-0.19, 0.62, 0);
+  const earR = earL.clone();
+  earR.position.x = 0.19;
+
+  const shoulderL = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), accent);
+  shoulderL.position.set(-0.32, 0.32, 0);
   const shoulderR = shoulderL.clone();
-  shoulderR.position.x = 0.3;
-  const padGlowL = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.02, 0.21), glowMat);
-  padGlowL.position.set(-0.3, 0.545, 0);
-  const padGlowR = padGlowL.clone();
-  padGlowR.position.x = 0.3;
+  shoulderR.position.x = 0.32;
 
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.26), armor);
-  head.position.y = 0.68;
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.02), glowMat);
-  visor.position.set(0, 0.7, -0.14);
-  const antenna = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.14, 0.02), glowMat);
-  antenna.position.set(0.1, 0.85, 0.05);
+  // backpack with soft thrusters instead of anything horn-like
+  const pack = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.3, 0.14), lightGrey);
+  pack.position.set(0, 0.15, 0.27);
+  const thrL = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 10), joint);
+  thrL.position.set(-0.09, -0.03, 0.29);
+  const thrR = thrL.clone();
+  thrR.position.x = 0.09;
+  const jetL = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.02, 10), glowCyan);
+  jetL.position.set(-0.09, -0.09, 0.29);
+  const jetR = jetL.clone();
+  jetR.position.x = 0.09;
 
   // arms reach toward the gun
-  const armR = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.34), armor);
-  armR.position.set(0.24, 0.3, -0.16);
-  armR.rotation.x = 0.35;
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.3), armor);
-  armL.position.set(-0.16, 0.22, -0.26);
-  armL.rotation.set(0.5, -0.5, 0);
+  const armR = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.24, 4, 8), joint);
+  armR.position.set(0.24, 0.16, -0.16);
+  armR.rotation.x = 1.1;
+  const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.22, 4, 8), joint);
+  armL.position.set(-0.12, 0.12, -0.24);
+  armL.rotation.set(1.2, -0.5, 0);
 
   const gunMount = new THREE.Group();
-  gunMount.position.set(0.18, 0.26, -0.38);
+  gunMount.position.set(0.18, 0.18, -0.38);
+  gunMount.scale.setScalar(0.9);
   gunMount.add(makeGun(0));
 
-  upper.add(pelvis, waist, chest, core, shoulderL, shoulderR, padGlowL, padGlowR,
-    head, visor, antenna, armR, armL, gunMount);
+  upper.add(torso, belly, core, head, eyeL, eyeR, earL, earR,
+    shoulderL, shoulderR, pack, thrL, thrR, jetL, jetR, armR, armL, gunMount);
 
   g.add(legL, legR, upper);
   g.userData.parts = { legL, legR, upper, gunMount, phase: 0, weapon: 0, prev: null };

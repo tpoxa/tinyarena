@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
 	"regexp"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,7 @@ const (
 
 var colors = []string{"#5b6cff", "#27e0ff", "#ff3df0", "#ff9a3d", "#7dff3d", "#ff4b4b", "#ffe83d", "#3dffc8"}
 var nameRe = regexp.MustCompile(`[^\w\-. ]`)
+var debugCombat = os.Getenv("DEBUG") == "1"
 
 type Player struct {
 	ID     int
@@ -41,10 +43,16 @@ type Player struct {
 	LastFire  map[int]float64
 	LastSeen  float64
 
-	// bot brain
+	// who hit us last — void falls within 4s credit them with the frag
+	LastAttacker int
+	LastHitAt    float64
+
+	// bot brain + ballistics (bots are knockback-simulated server-side)
 	NodeI     int
 	PrevI     int
 	BotFireAt float64
+	Vel       Vec3
+	Grounded  bool
 }
 
 type Rocket struct {
@@ -198,6 +206,9 @@ func (g *Game) respawn(p *Player) {
 	s := g.pickSpawn(p)
 	p.Pos = s.P
 	p.NodeI, p.PrevI = -1, -1
+	p.Vel = Vec3{}
+	p.Grounded = false
+	p.LastAttacker = 0
 	p.Yaw = s.Yaw
 	p.Pitch = 0
 	p.HP = g.arena.MaxHP
@@ -228,8 +239,22 @@ func (g *Game) applyDamage(target *Player, dmg int, attacker *Player, weaponID i
 		remaining = dmg - absorbed
 	}
 	target.HP -= remaining
-	if knock != nil && !target.Bot {
-		g.send(target, map[string]any{"t": "push", "v": *knock})
+	if debugCombat {
+		log.Printf("dmg %d -> #%d %s (hp %d) knock=%v", dmg, target.ID, target.Name, target.HP, knock != nil)
+	}
+	if knock != nil {
+		if target.Bot {
+			target.Vel[0] += knock[0]
+			target.Vel[1] += knock[1]
+			target.Vel[2] += knock[2]
+			target.Grounded = false
+		} else {
+			g.send(target, map[string]any{"t": "push", "v": *knock})
+		}
+	}
+	if attacker != nil && attacker.ID != target.ID {
+		target.LastAttacker = attacker.ID
+		target.LastHitAt = nowSec()
 	}
 	if attacker != nil && attacker.ID != target.ID && !attacker.Bot {
 		g.send(attacker, map[string]any{"t": "hit", "target": target.ID, "dmg": dmg})
@@ -352,6 +377,15 @@ func (g *Game) explodeRocket(r *Rocket, at Vec3, directVictimID int) {
 	delete(g.rockets, r.ID)
 	w := &g.arena.Weapons[1]
 	owner := g.players[r.Owner]
+	if debugCombat {
+		near := math.Inf(1)
+		for _, p := range g.players {
+			if p.ID != r.Owner && !p.Dead {
+				near = math.Min(near, dist3(Vec3{p.Pos[0], p.Pos[1] + 0.9, p.Pos[2]}, at))
+			}
+		}
+		log.Printf("boom at %.1f,%.1f,%.1f direct=%d nearest-enemy=%.2fm", at[0], at[1], at[2], directVictimID, near)
+	}
 	g.broadcast(map[string]any{"t": "boom", "p": at, "owner": r.Owner}, 0)
 	for _, p := range g.players {
 		if p.Dead || p.ID == directVictimID { // direct hit already paid full damage
@@ -421,7 +455,10 @@ func (g *Game) stepRockets(dt float64) {
 				if owner == nil {
 					owner = directVictim
 				}
-				g.applyDamage(directVictim, int(w.Dmg), owner, w.ID, nil)
+				// direct hits shove hardest — along the rocket's flight, with lift
+				kn := norm(Vec3{r.Dir[0], r.Dir[1] + 0.5, r.Dir[2]})
+				kv := Vec3{kn[0] * w.Knock, kn[1] * w.Knock, kn[2] * w.Knock}
+				g.applyDamage(directVictim, int(w.Dmg), owner, w.ID, &kv)
 				victimID = directVictim.ID
 			}
 			g.explodeRocket(r, at, victimID)
@@ -551,7 +588,11 @@ func (g *Game) tick(dt float64) {
 			g.respawn(p)
 		}
 		if !p.Dead && p.Pos[1] < g.arena.KillY {
-			g.kill(p, nil, -1)
+			var att *Player
+			if p.LastAttacker != 0 && t-p.LastHitAt < 4 {
+				att = g.players[p.LastAttacker] // knocked into the void — their frag
+			}
+			g.kill(p, att, -1)
 		}
 		if !p.Bot && p.Conn != nil && t-p.LastSeen > 15 {
 			p.Conn.ws.Close()
