@@ -1,6 +1,7 @@
 // Remote players & server rockets: meshes, name tags, snapshot interpolation.
 
 import * as THREE from 'three';
+import { makeGun } from '/js/guns.js';
 
 const INTERP_DELAY = 0.12; // render remotes this far in the past
 
@@ -21,26 +22,78 @@ function nameSprite(name, color) {
   return spr;
 }
 
+// articulated neon arena droid; parts wired into userData for animation
 function playerMesh(color) {
   const g = new THREE.Group();
   const col = new THREE.Color(color);
-  const bodyMat = new THREE.MeshLambertMaterial({ color: col.clone().multiplyScalar(0.55) });
+  const armor = new THREE.MeshLambertMaterial({ color: 0x23264a });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x14162e });
   const glowMat = new THREE.MeshBasicMaterial({ color: col });
 
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.7, 4, 12), bodyMat);
-  torso.position.y = 0.95;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.36), bodyMat);
-  head.position.y = 1.62;
-  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.09, 0.1), glowMat);
-  visor.position.set(0, 1.64, -0.16);
-  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.72, 0.06), glowMat);
-  stripe.position.set(0, 0.95, -0.33);
-  const gun = new THREE.Mesh(
-    new THREE.BoxGeometry(0.1, 0.12, 0.55),
-    new THREE.MeshLambertMaterial({ color: 0x1a1d38 }),
-  );
-  gun.position.set(0.3, 1.25, -0.3);
-  g.add(torso, head, visor, stripe, gun);
+  // legs — pivot at the hip so they can swing
+  function leg(x) {
+    const hip = new THREE.Group();
+    hip.position.set(x, 0.88, 0);
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.42, 0.15), armor);
+    thigh.position.y = -0.21;
+    const shin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.12), dark);
+    shin.position.set(0, -0.6, 0.01);
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.08, 0.22), dark);
+    foot.position.set(0, -0.84, -0.04);
+    const kneeGlow = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.02), glowMat);
+    kneeGlow.position.set(0, -0.42, -0.08);
+    hip.add(thigh, shin, foot, kneeGlow);
+    return hip;
+  }
+  const legL = leg(-0.11);
+  const legR = leg(0.11);
+
+  // upper body — pivots at the waist so it can pitch with aim
+  const upper = new THREE.Group();
+  upper.position.y = 1.0;
+
+  const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.22), dark);
+  pelvis.position.y = -0.06;
+  const waist = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.18, 0.2), armor);
+  waist.position.y = 0.1;
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.34, 0.26), armor);
+  chest.position.y = 0.36;
+  const core = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.02), glowMat);
+  core.position.set(0, 0.38, -0.14);
+
+  const shoulderL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.2), armor);
+  shoulderL.position.set(-0.3, 0.48, 0);
+  const shoulderR = shoulderL.clone();
+  shoulderR.position.x = 0.3;
+  const padGlowL = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.02, 0.21), glowMat);
+  padGlowL.position.set(-0.3, 0.545, 0);
+  const padGlowR = padGlowL.clone();
+  padGlowR.position.x = 0.3;
+
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.26), armor);
+  head.position.y = 0.68;
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.02), glowMat);
+  visor.position.set(0, 0.7, -0.14);
+  const antenna = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.14, 0.02), glowMat);
+  antenna.position.set(0.1, 0.85, 0.05);
+
+  // arms reach toward the gun
+  const armR = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.34), armor);
+  armR.position.set(0.24, 0.3, -0.16);
+  armR.rotation.x = 0.35;
+  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.3), armor);
+  armL.position.set(-0.16, 0.22, -0.26);
+  armL.rotation.set(0.5, -0.5, 0);
+
+  const gunMount = new THREE.Group();
+  gunMount.position.set(0.18, 0.26, -0.38);
+  gunMount.add(makeGun(0));
+
+  upper.add(pelvis, waist, chest, core, shoulderL, shoulderR, padGlowL, padGlowR,
+    head, visor, antenna, armR, armL, gunMount);
+
+  g.add(legL, legR, upper);
+  g.userData.parts = { legL, legR, upper, gunMount, phase: 0, weapon: 0, prev: null };
   return g;
 }
 
@@ -110,6 +163,7 @@ export class Remotes {
       if (!r) continue;
       r.info.frags = s.f;
       r.info.deaths = s.dt;
+      r.wantWeapon = s.w;
       const wasDead = r.dead;
       r.dead = !!s.d;
       if (r.dead && !wasDead) {
@@ -171,6 +225,28 @@ export class Remotes {
       if (dyaw < -Math.PI) dyaw += Math.PI * 2;
       r.group.rotation.y = a.yw + dyaw * k;
       r.group.visible = true;
+
+      // drive the droid: leg swing from actual motion, torso pitch from aim
+      const parts = r.group.userData.parts;
+      if (parts) {
+        const p = r.group.position;
+        if (parts.prev && dt > 0) {
+          const speed = Math.min(10, Math.hypot(p.x - parts.prev.x, p.z - parts.prev.z) / dt);
+          const amp = Math.min(1, speed / 8);
+          parts.phase += dt * (2 + speed * 1.6);
+          const swing = Math.sin(parts.phase) * 0.75 * amp;
+          parts.legL.rotation.x = swing;
+          parts.legR.rotation.x = -swing;
+          parts.upper.position.y = 1.0 + Math.abs(Math.cos(parts.phase)) * 0.05 * amp;
+        }
+        parts.prev = { x: p.x, z: p.z };
+        parts.upper.rotation.x = (a.pt + (b.pt - a.pt) * k) * 0.55;
+        if (parts.weapon !== r.wantWeapon && r.wantWeapon !== undefined) {
+          parts.weapon = r.wantWeapon;
+          parts.gunMount.clear();
+          parts.gunMount.add(makeGun(parts.weapon));
+        }
+      }
     }
 
     // smooth rockets toward their latest server position

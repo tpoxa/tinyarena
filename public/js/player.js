@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { BOXES, JUMP_PADS, TELEPORTERS, boxMin, boxMax, raycastWorld } from '/shared/map.js';
 import { WEAPONS, START_AMMO } from '/shared/weapons.js';
+import { makeGun } from '/js/guns.js';
 
 const GRAVITY = 22;
 const MAX_SPEED = 9;
@@ -44,25 +45,17 @@ export class LocalPlayer {
 
   buildViewmodel() {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(0.09, 0.11, 0.42),
-      new THREE.MeshLambertMaterial({ color: 0x2a2e55 }),
-    );
-    const barrel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.028, 0.028, 0.3, 10),
-      new THREE.MeshLambertMaterial({ color: 0x11132a }),
-    );
-    barrel.rotation.x = Math.PI / 2;
-    barrel.position.set(0, 0.02, -0.32);
-    this.vmGlow = new THREE.Mesh(
-      new THREE.BoxGeometry(0.02, 0.02, 0.3),
-      new THREE.MeshBasicMaterial({ color: 0x27e0ff }),
-    );
-    this.vmGlow.position.set(0, 0.062, -0.05);
-    g.add(body, barrel, this.vmGlow);
-    g.position.set(0.24, -0.22, -0.42);
+    g.add(makeGun(this.weapon));
+    g.position.set(0.26, -0.24, -0.45);
+    g.scale.setScalar(0.8);
     this.viewmodel = g;
     this.camera.add(g);
+  }
+
+  setViewmodelWeapon(w) {
+    this.viewmodel.clear();
+    this.viewmodel.add(makeGun(w));
+    this.recoil = 0.6; // small draw-kick on switch
   }
 
   bindInput() {
@@ -96,8 +89,7 @@ export class LocalPlayer {
     if (w === this.weapon || !WEAPONS[w]) return;
     this.weapon = w;
     this.audio.play('switch');
-    const colors = [0x27e0ff, 0xff4b2e, 0x7dff3d];
-    this.vmGlow.material.color.setHex(colors[w]);
+    this.setViewmodelWeapon(w);
     document.dispatchEvent(new CustomEvent('weapon-changed', { detail: w }));
   }
 
@@ -198,7 +190,7 @@ export class LocalPlayer {
     if (this.onGround && speed > 1) this.bobPhase += dt * speed * 1.4;
     const bob = Math.sin(this.bobPhase) * 0.008 * Math.min(1, speed / MAX_SPEED);
     this.recoil = Math.max(0, this.recoil - dt * 3);
-    this.viewmodel.position.set(0.24, -0.22 + bob, -0.42 + this.recoil * 0.08);
+    this.viewmodel.position.set(0.26, -0.24 + bob, -0.45 + this.recoil * 0.08);
     this.viewmodel.rotation.x = this.recoil * 0.35;
 
     if (this.alive && this.firing) this.tryFire();

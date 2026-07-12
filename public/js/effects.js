@@ -117,7 +117,7 @@ export class Effects {
 
   // short-lived glowing segment behind a moving rocket — makes its path readable
   rocketTrail(a, b) {
-    this.beamBetween(a, b, 0.05, 0xff9a3d, 0.3, 0.5);
+    this.beamBetween(a, b, 0.03, 0xff9a3d, 0.25, 0.45);
   }
 
   removeRocket(mesh) {
