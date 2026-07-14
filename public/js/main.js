@@ -11,9 +11,10 @@ import { Net } from '/js/net.js';
 import { PICKUP_DEFS, PICKUPS } from '/shared/map.js';
 
 const canvas = document.getElementById('game');
-// laptop-friendly: MSAA off on retina (1.5x pixels hide the jaggies already)
+// laptop-friendly: 1.5x pixel cap + 60fps cap do the thermal work; MSAA stays on
+// (it is cheap on tiled GPUs and the neon edge lines shimmer badly without it)
 const PIXEL_RATIO = Math.min(window.devicePixelRatio, 1.5);
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: window.devicePixelRatio < 1.5 });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(PIXEL_RATIO);
 renderer.setSize(window.innerWidth, window.innerHeight);
 

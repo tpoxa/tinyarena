@@ -81,6 +81,7 @@ export class World {
       });
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
       edges.position.copy(mesh.position);
+      edges.scale.setScalar(1.002); // sit just off the faces — no z-fighting
       this.scene.add(edges);
       this.edgeMats.push({ mat: edgeMat, phase: idx * 0.9 });
 
