@@ -157,6 +157,16 @@ export class Remotes {
 
   get(id) { return this.players.get(id); }
 
+  // kill confirmed by the server — burst at the rendered position, riding the impulse
+  killBurst(id, kick) {
+    const r = this.players.get(id);
+    if (!r || r.dead || !r.group.visible) return;
+    r.dead = true;
+    r.group.visible = false;
+    const p = r.group.position;
+    this.effects.deathBurst([p.x, p.y, p.z], r.info.color, kick);
+  }
+
   // world positions of visible alive bodies (for player-vs-body collision)
   alivePositions() {
     const out = [];

@@ -124,18 +124,19 @@ export class Effects {
     this.scene.remove(mesh);
   }
 
-  deathBurst(p, colorHex) {
+  deathBurst(p, colorHex, kick) {
     const color = new THREE.Color(colorHex);
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 18; i++) {
       const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 });
       const m = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.14), mat);
       m.position.set(p[0], p[1] + 0.9, p[2]);
+      const kb = 0.6 + Math.random() * 0.6; // cubes ride the killing blow
       const v = new THREE.Vector3(
-        (Math.random() - 0.5) * 9,
-        Math.random() * 7 + 2,
-        (Math.random() - 0.5) * 9,
+        (Math.random() - 0.5) * 9 + (kick?.[0] ?? 0) * kb,
+        Math.random() * 7 + 2 + Math.max(0, kick?.[1] ?? 0) * kb,
+        (Math.random() - 0.5) * 9 + (kick?.[2] ?? 0) * kb,
       );
-      this.add(m, 0.9, (it, k, dt) => {
+      this.add(m, 1.1, (it, k, dt) => {
         v.y -= 22 * dt;
         m.position.addScaledVector(v, dt);
         m.rotation.x += dt * 9;

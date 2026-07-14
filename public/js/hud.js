@@ -103,6 +103,8 @@ export class Hud {
   }
 
   showDeath(killerName, voidDeath = false) {
+    this.vignetteLevel = 0; // no blood-red wash over the death cam
+    this.vignette.style.opacity = 0;
     this.deathMsg.textContent = voidDeath
       ? 'YOU FELL INTO THE VOID'
       : killerName ? `FRAGGED BY ${killerName.toUpperCase()}` : 'YOU FRAGGED YOURSELF';

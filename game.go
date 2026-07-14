@@ -53,6 +53,10 @@ type Player struct {
 	LastAttacker int
 	LastHitAt    float64
 
+	// last shove taken — carried into the death burst so corpses blast away
+	LastKnock   Vec3
+	LastKnockAt float64
+
 	// bot brain + ballistics (bots are knockback-simulated server-side)
 	NodeI     int
 	PrevI     int
@@ -317,10 +321,17 @@ func (g *Game) applyDamage(target *Player, dmg int, attacker *Player, weaponID i
 		log.Printf("dmg %d -> #%d %s (hp %d) knock=%v", dmg, target.ID, target.Name, target.HP, knock != nil)
 	}
 	if knock != nil {
+		target.LastKnock = *knock
+		target.LastKnockAt = nowSec()
 		if target.Bot {
-			target.Vel[0] += knock[0]
-			target.Vel[1] += knock[1]
-			target.Vel[2] += knock[2]
+			// toy bots are light: 1.5x shove, and any real hit pops them airborne
+			target.Vel[0] += knock[0] * 1.5
+			target.Vel[1] += knock[1] * 1.5
+			target.Vel[2] += knock[2] * 1.5
+			kmag := math.Hypot(math.Hypot(knock[0], knock[1]), knock[2])
+			if kmag > 3.5 && target.Vel[1] < 3 {
+				target.Vel[1] = 3
+			}
 			target.Grounded = false
 		} else {
 			g.send(target, map[string]any{"t": "push", "v": *knock})
@@ -395,7 +406,11 @@ func (g *Game) kill(victim, attacker *Player, weaponID int) {
 		}
 		attacker.LastFragAt = t
 	}
-	g.broadcast(map[string]any{"t": "die", "victim": victim.ID, "killer": killerID, "w": weaponID}, 0)
+	kv := Vec3{}
+	if t-victim.LastKnockAt < 0.5 {
+		kv = victim.LastKnock // fresh impulse — let the client blast the corpse along it
+	}
+	g.broadcast(map[string]any{"t": "die", "victim": victim.ID, "killer": killerID, "w": weaponID, "kv": kv}, 0)
 	if !suicide {
 		if lbl := multiLabel(attacker.MultiN); lbl != "" {
 			g.broadcast(map[string]any{"t": "streak", "id": attacker.ID, "name": attacker.Name, "n": attacker.MultiN, "label": lbl}, 0)

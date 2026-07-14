@@ -99,13 +99,19 @@ export class LocalPlayer {
     this.yaw = yaw;
     this.pitch = 0;
     this.alive = true;
+    this.deathCam = null;
+    this.viewmodel.visible = true;
     this.ammo = { ...START_AMMO };
   }
 
   die() {
     this.alive = false;
     this.firing = false;
+    for (const r of this.localRockets) this.effects.removeRocket(r.mesh);
     this.localRockets.length = 0;
+    // pull the camera out behind the body to watch it come apart
+    this.deathCam = { t: 0, pos: this.pos.clone(), yaw: this.yaw };
+    this.viewmodel.visible = false;
   }
 
   forwardDir() {
@@ -180,11 +186,26 @@ export class LocalPlayer {
     this.updateLocalRockets(dt);
 
     // camera + viewmodel
-    this.camera.rotation.order = 'YXZ';
-    this.camera.rotation.y = this.yaw;
-    this.camera.rotation.x = this.pitch;
-    this.camera.rotation.z = 0; // kill residual roll left over from the menu lookAt()
-    this.camera.position.set(this.pos.x, this.pos.y + EYE, this.pos.z);
+    if (this.deathCam) {
+      // death cam: ease back and up behind the body, drifting slowly around it
+      const dc = this.deathCam;
+      dc.t += dt;
+      const ease = 1 - Math.pow(1 - Math.min(1, dc.t / 0.7), 3);
+      const yaw = dc.yaw + dc.t * 0.22;
+      const back = 1.6 + ease * 2.8;
+      this.camera.position.set(
+        dc.pos.x + Math.sin(yaw) * back,
+        dc.pos.y + 1.1 + ease * 1.5,
+        dc.pos.z + Math.cos(yaw) * back,
+      );
+      this.camera.lookAt(dc.pos.x, dc.pos.y + 0.6, dc.pos.z);
+    } else {
+      this.camera.rotation.order = 'YXZ';
+      this.camera.rotation.y = this.yaw;
+      this.camera.rotation.x = this.pitch;
+      this.camera.rotation.z = 0; // kill residual roll left over from the menu lookAt()
+      this.camera.position.set(this.pos.x, this.pos.y + EYE, this.pos.z);
+    }
 
     const speed = Math.hypot(this.vel.x, this.vel.z);
     if (this.onGround && speed > 1) this.bobPhase += dt * speed * 1.4;

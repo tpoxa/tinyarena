@@ -105,6 +105,7 @@ net.on('spawn', (msg) => {
 });
 
 net.on('die', (msg) => {
+  if (msg.victim !== net.myId) remotes.killBurst(msg.victim, msg.kv);
   const killer = playerName(msg.killer);
   const victim = playerName(msg.victim);
   const suicide = msg.killer === msg.victim;
@@ -113,6 +114,13 @@ net.on('die', (msg) => {
     msg.killer === net.myId || msg.victim === net.myId, suicide && !voidDeath);
   if (msg.victim === net.myId) {
     player.die();
+    if (!voidDeath) {
+      effects.deathBurst(
+        [player.pos.x, player.pos.y, player.pos.z],
+        roster.get(net.myId)?.color ?? '#5b6cff',
+        msg.kv,
+      );
+    }
     audio.play('die');
     hud.showDeath(suicide ? null : killer, voidDeath);
   } else if (msg.killer === net.myId) {
