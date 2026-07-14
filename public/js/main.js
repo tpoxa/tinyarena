@@ -8,6 +8,7 @@ import { Effects } from '/js/effects.js';
 import { Hud } from '/js/hud.js';
 import { AudioEngine } from '/js/audio.js';
 import { Net } from '/js/net.js';
+import { MODELS, buildModel } from '/js/models.js';
 import { PICKUP_DEFS, PICKUPS } from '/shared/map.js';
 
 const canvas = document.getElementById('game');
@@ -189,6 +190,38 @@ net.on('disconnect', () => {
   joined = false;
 });
 
+// ------------------------------------------------ model picker
+
+const mpRenderer = new THREE.WebGLRenderer({
+  canvas: document.getElementById('model-preview'), antialias: true, alpha: true,
+});
+mpRenderer.setPixelRatio(PIXEL_RATIO);
+mpRenderer.setSize(200, 200, false);
+const mpScene = new THREE.Scene();
+mpScene.add(new THREE.HemisphereLight(0x6a78d8, 0x1a1638, 2.6));
+const mpDir = new THREE.DirectionalLight(0xc4ccff, 2.2);
+mpDir.position.set(3, 6, 4);
+mpScene.add(mpDir);
+const mpCam = new THREE.PerspectiveCamera(40, 1, 0.1, 20);
+mpCam.position.set(0, 1.35, 3.2);
+mpCam.lookAt(0, 0.8, 0);
+
+let modelIdx = Math.max(0, MODELS.findIndex((m) => m.id === localStorage.getItem('ta-model')));
+let mpMesh = null;
+
+function setModel(i) {
+  modelIdx = (i + MODELS.length) % MODELS.length;
+  localStorage.setItem('ta-model', MODELS[modelIdx].id);
+  document.getElementById('model-name').textContent = MODELS[modelIdx].name;
+  if (mpMesh) mpScene.remove(mpMesh);
+  mpMesh = buildModel(MODELS[modelIdx].id, '#27e0ff');
+  mpMesh.rotation.y = Math.PI; // face the camera first
+  mpScene.add(mpMesh);
+}
+setModel(modelIdx);
+document.getElementById('model-prev').addEventListener('click', () => setModel(modelIdx - 1));
+document.getElementById('model-next').addEventListener('click', () => setModel(modelIdx + 1));
+
 // ------------------------------------------------ join flow
 
 const joinForm = document.getElementById('join-form');
@@ -202,10 +235,13 @@ joinForm.addEventListener('submit', async (e) => {
   localStorage.setItem('ta-name', name);
   document.getElementById('join-status').textContent = 'CONNECTING…';
   try {
-    const welcome = await net.connect(name);
+    const welcome = await net.connect(name, MODELS[modelIdx].id);
     joined = true;
     remotes.myId = net.myId;
     roster.set(net.myId, { id: net.myId, name: welcome.name, color: welcome.color, bot: false, frags: 0, deaths: 0 });
+    const nameEl = document.getElementById('hud-name');
+    nameEl.textContent = welcome.name;
+    nameEl.style.color = welcome.color;
     for (const p of welcome.players) {
       if (p.id === net.myId) continue;
       roster.set(p.id, p);
@@ -257,13 +293,22 @@ function loop(now) {
   hud.update(dt);
 
   if (!joined) {
-    // menu orbit cam
+    // menu orbit cam + model preview
     orbitT += dt * 0.08;
     camera.position.set(Math.sin(orbitT) * 34, 16, Math.cos(orbitT) * 34);
     camera.lookAt(0, 2, 0);
+    if (mpMesh) {
+      mpMesh.rotation.y += dt * 1.1;
+      mpRenderer.render(mpScene, mpCam);
+    }
   } else {
     player.update(dt, true);
-    remotes.update(dt);
+    if (player.alive) {
+      const f = player.forwardDir();
+      remotes.update(dt, player.eye(), [f.x, f.y, f.z]);
+    } else {
+      remotes.update(dt);
+    }
     hud.updateScoreboard([...roster.values()], net.myId);
     hud.setMeta(net.ping, fps);
   }

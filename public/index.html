@@ -28,6 +28,14 @@
         <input id="join-name" type="text" maxlength="14" placeholder="CALLSIGN" spellcheck="false" />
         <button id="join-btn" type="submit">ENTER ARENA</button>
       </form>
+      <div class="model-pick">
+        <button id="model-prev" class="mp-btn" type="button" aria-label="previous body">◀</button>
+        <div class="mp-stage">
+          <canvas id="model-preview" width="200" height="200"></canvas>
+          <div id="model-name" class="model-name">TROOPER</div>
+        </div>
+        <button id="model-next" class="mp-btn" type="button" aria-label="next body">▶</button>
+      </div>
       <div class="join-keys">
         <span><b>WASD</b> move</span>
         <span><b>SPACE</b> jump</span>
@@ -73,6 +81,7 @@
       <div class="wslot" data-w="2"><b>3</b>RG</div>
     </div>
 
+    <div id="hud-name" class="hud-name"></div>
     <div id="hud-meta" class="hud-meta"><span id="hud-ping">–</span> ms · <span id="hud-fps">–</span> fps</div>
 
     <div id="scoreboard" class="scoreboard hidden">

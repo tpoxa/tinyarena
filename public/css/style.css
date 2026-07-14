@@ -396,3 +396,40 @@ html, body {
 }
 
 body.quad-active .quad-vignette { opacity: 1; }
+
+/* ------------------------------------------------ model picker + hud name */
+
+.model-pick {
+  margin-top: 24px;
+  display: flex; align-items: center; justify-content: center; gap: 20px;
+}
+
+.mp-btn {
+  width: 46px; height: 46px; cursor: pointer;
+  background: rgba(12, 14, 30, 0.9);
+  border: 1px solid rgba(91, 108, 255, 0.45);
+  color: var(--cyan); font-size: 15px;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.mp-btn:hover { border-color: var(--cyan); box-shadow: 0 0 18px rgba(39, 224, 255, 0.25); }
+
+.mp-stage { text-align: center; }
+
+#model-preview {
+  width: 150px; height: 150px; display: block; margin: 0 auto;
+  filter: drop-shadow(0 0 22px rgba(39, 224, 255, 0.18));
+}
+
+.model-name {
+  margin-top: 2px;
+  font-family: var(--display); font-size: 13px; letter-spacing: 0.2em;
+  color: var(--cyan); text-shadow: 0 0 14px rgba(39, 224, 255, 0.5);
+}
+
+.hud-name {
+  position: absolute; left: 26px; bottom: 44px;
+  font-family: var(--display); font-size: 15px; letter-spacing: 0.12em;
+  text-shadow: 0 0 14px currentColor;
+}

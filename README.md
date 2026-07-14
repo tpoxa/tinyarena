@@ -1,6 +1,8 @@
 # TINY ARENA
 
-Quake 3 Arena-style browser FPS. Go server (WebSocket, authoritative), Three.js client, bots, deathmatch to 15 frags. No build step, no client deps — assets are embedded in the binary.
+Quake-style browser deathmatch in one 10 MB Go binary. The server, the bots, and the whole Tron-flavored Three.js client are baked into a single executable, so there is nothing to build and nothing for players to install.
+
+![arena](docs/arena.png)
 
 ## Run
 
@@ -9,15 +11,41 @@ go build -o tiny-arena-server . && ./tiny-arena-server
 # open http://localhost:3377
 ```
 
+Colleagues on the same network: give them `http://<your-lan-ip>:3377`. That's the whole deployment story.
+
 Env: `PORT` (default 3377), `BOTS` (default 3), `DEV=1` serves `public/` and `shared/` from disk so client edits apply on refresh.
 
 ## Play
 
-WASD + mouse, SPACE jump (hold = auto-hop), 1/2/3 or wheel — machinegun / rockets / railgun, TAB scoreboard. B adds a bot, N kicks the newest one (any player, max 8). Rocket-jump: shoot at your feet mid-jump.
+Pick a body at the join screen — rubber duck, pizza slice, Christmas tree, retro PC, and eleven more low-poly desk heroes. Bots pick their own.
 
-QUAD DAMAGE spawns on the east platform every 60s: 3× damage for 20s, lost on death — everyone sees the glow, everyone hears about it. Fast frags stack DOUBLE/TRIPLE/MULTI/MONSTER KILL; staying alive stacks KILLING SPREE (5), RAMPAGE (8), GODLIKE (12).
+![join](docs/join.png)
+![cast](docs/cast.png)
 
-Colleagues on the same network: `http://<your-lan-ip>:3377`.
+- **WASD** + mouse, **SPACE** jump (hold it for auto-hop)
+- **1/2/3** or wheel — machinegun / rocket launcher / railgun
+- **TAB** scoreboard, **B** add a bot, **N** kick the newest one (max 8)
+- Rocket-jump: fire at your feet mid-jump. Knockback is real: rockets throw people, sometimes off the map. The void keeps score.
+- **QUAD DAMAGE** spawns on the east platform every 60 s: 3× damage for 20 s, lost on death, and everyone gets told you have it
+- Fast frags stack DOUBLE / TRIPLE / MULTI / MONSTER KILL; staying alive stacks KILLING SPREE (5), RAMPAGE (8), GODLIKE (12)
+- Death matters: the camera pulls out behind you while your body bursts into cubes that ride the killing blow
+
+![death](docs/death.png)
+
+Aim at someone to see their name. Yours is on the HUD.
+
+## How it works
+
+The Go server owns the truth. It runs the simulation at 30 Hz and sends snapshots at 20 Hz, all as plain JSON WebSocket messages you can read with `wscat`. Movement is client-predicted (Quake-style ground friction, air control, bunny-hop), but every shot is validated and resolved server-side: hitscan and rockets ray-march against player spheres and the map's AABBs, so a laggy client can't invent hits. Remote players render about 120 ms in the past and interpolate between snapshots.
+
+- `main.go` — WebSocket plumbing; one goroutine owns all game state, connections talk to it via channels
+- `game.go` — combat, pickups, streaks, quad, snapshots
+- `bots.go` — bots walk a line-of-sight waypoint graph and switch to pure server-side ballistics when a rocket sends them flying
+- `arena.go` — map loading + AABB raycasts
+- `shared/arena.json` — the entire map, weapons, and balance in one JSON file read by both Go and JS
+- `public/` — the client: Three.js scene, prediction, HUD, procedural WebAudio sound (zero asset files), and the model factory (`public/js/models.js`)
+
+The player bodies are built from Three.js primitives at runtime; there are no model files in the repo. Sounds work the same way: every effect is synthesized from oscillators and filtered noise. The only vendored dependency is Three.js.
 
 ## Tests
 
@@ -26,9 +54,12 @@ PORT=3388 BOTS=0 ./tiny-arena-server &   # protocol smoke test needs a bot-free 
 node server/smoke.js
 ```
 
-## Layout
+`server/smoke.js` drives two WebSocket clients through join → shoot → frag → respawn against a real server.
 
-- `main.go`, `game.go`, `bots.go`, `arena.go` — server
-- `shared/arena.json` — map + weapons data, single source for Go and JS
-- `shared/map.js` — loads arena.json, AABB math shared client-side
-- `public/` — client (Three.js vendored in `public/vendor/three`)
+## Made with Claude Code
+
+This game was designed, written, debugged, and screenshot-tested by [Claude Code](https://claude.com/claude-code) across a handful of sessions, steered by one human with opinions about how rocket jumps should feel. The bugs were also written by Claude Code, to be fair. Then found and fixed by it, using headless-browser screenshots and WebSocket protocol tests it wrote for itself.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

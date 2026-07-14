@@ -11,8 +11,7 @@
 <body>
 <script type="module">
 import * as THREE from 'three';
-import { playerMesh } from '/js/remotes.js';
-import { makeGun } from '/js/guns.js';
+import { MODELS, buildModel } from '/js/models.js';
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
@@ -25,41 +24,39 @@ const dir = new THREE.DirectionalLight(0xaab4ff, 1.1);
 dir.position.set(18, 40, 12);
 scene.add(dir);
 
+const cols = 5;
+const spacing = 2.0;
+const rows = Math.ceil(MODELS.length / cols);
 const floor = new THREE.Mesh(
-  new THREE.BoxGeometry(10, 0.2, 6),
+  new THREE.BoxGeometry(cols * spacing + 2, 0.2, rows * spacing + 2),
   new THREE.MeshLambertMaterial({ color: 0x14162a }),
 );
-floor.position.y = -0.1;
+floor.position.set(0, -0.1, -(rows - 1) * spacing * 0.5);
 scene.add(floor);
 
-const colors = ['#5b6cff', '#ff9a3d', '#7dff3d'];
-const droids = colors.map((c, i) => {
-  const d = playerMesh(c);
-  d.position.set((i - 1) * 1.4, 0, 0);
-  d.rotation.y = Math.PI; // face the camera
-  const parts = d.userData.parts;
-  parts.gunMount.clear();
-  parts.gunMount.add(makeGun(i)); // one of each weapon
-  scene.add(d);
-  return d;
+const palette = ['#5b6cff', '#27e0ff', '#ff3df0', '#ff9a3d', '#7dff3d', '#ff4b4b', '#ffe83d', '#3dffc8'];
+const bodies = MODELS.map((m, i) => {
+  const g = buildModel(m.id, palette[i % palette.length]);
+  g.position.set(((i % cols) - (cols - 1) / 2) * spacing, 0, -Math.floor(i / cols) * spacing);
+  scene.add(g);
+  return g;
 });
 
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
-camera.position.set(0, 1.35, 3.6);
-camera.lookAt(0, 0.95, 0);
+camera.position.set(0, 3.4, 7.5);
+camera.lookAt(0, 0.9, -(rows - 1) * spacing * 0.5);
 
 let t = 0;
 function loop() {
   requestAnimationFrame(loop);
   t += 1 / 60;
-  droids.forEach((d, i) => {
-    const parts = d.userData.parts;
-    const amp = i === 1 ? 1 : 0.15; // middle one runs, others idle
-    const swing = Math.sin(t * 7) * 0.75 * amp;
+  bodies.forEach((b, i) => {
+    b.rotation.y = Math.PI + Math.sin(t * 0.5 + i) * 0.6; // sway to show all sides
+    const parts = b.userData.parts;
+    const swing = Math.sin(t * 7 + i) * 0.5 * 0.3;
     parts.legL.rotation.x = swing;
     parts.legR.rotation.x = -swing;
-    parts.upper.position.y = 1.0 + Math.abs(Math.cos(t * 7)) * 0.05 * amp;
-    d.rotation.y = Math.PI + Math.sin(t * 0.4 + i) * 0.5; // slow sway to see sides
+    parts.upper.position.y = parts.upperBaseY + Math.abs(Math.cos(t * 7 + i)) * 0.02;
   });
   renderer.render(scene, camera);
 }

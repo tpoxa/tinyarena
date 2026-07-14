@@ -23,10 +23,26 @@ var colors = []string{"#5b6cff", "#27e0ff", "#ff3df0", "#ff9a3d", "#7dff3d", "#f
 var nameRe = regexp.MustCompile(`[^\w\-. ]`)
 var debugCombat = os.Getenv("DEBUG") == "1"
 
+// must match the registry in public/js/models.js
+var modelIDs = []string{
+	"trooper", "duck", "tree", "pizza", "mug", "cactus", "cone", "penguin",
+	"ghost", "donut", "crt", "snowman", "burger", "floppy", "robotvac",
+}
+
+func validModel(id string) bool {
+	for _, m := range modelIDs {
+		if m == id {
+			return true
+		}
+	}
+	return false
+}
+
 type Player struct {
 	ID     int
 	Name   string
 	Color  string
+	Model  string
 	Bot    bool
 	Conn   *Conn
 	Pos    Vec3
@@ -121,8 +137,13 @@ func copyAmmo(m map[string]int) map[string]int {
 func (g *Game) makePlayer(name string, bot bool, conn *Conn) *Player {
 	id := g.nextID
 	g.nextID++
+	model := "trooper"
+	if bot {
+		model = modelIDs[rand.Intn(len(modelIDs))] // bots dress however they like
+	}
 	p := &Player{
 		ID: id, Name: name, Bot: bot, Conn: conn,
+		Model:     model,
 		Color:     colors[id%len(colors)],
 		Pos:       Vec3{0, 0.2, 0},
 		HP:        g.arena.MaxHP,
@@ -232,7 +253,7 @@ func (g *Game) broadcast(msg any, exceptID int) {
 
 func publicInfo(p *Player) map[string]any {
 	return map[string]any{
-		"id": p.ID, "name": p.Name, "color": p.Color, "bot": p.Bot,
+		"id": p.ID, "name": p.Name, "color": p.Color, "bot": p.Bot, "model": p.Model,
 		"frags": p.Frags, "deaths": p.Deaths, "dead": p.Dead,
 	}
 }
@@ -813,15 +834,16 @@ func (g *Game) sendSnapshots() {
 // ---------------------------------------------------------------- inbound
 
 type inMsg struct {
-	T    string          `json:"t"`
-	Name string          `json:"name"`
-	P    []float64       `json:"p"`
-	Yw   *float64        `json:"yw"`
-	Pt   *float64        `json:"pt"`
-	W    *int            `json:"w"`
-	O    []float64       `json:"o"`
-	D    []float64       `json:"d"`
-	Ts   json.RawMessage `json:"ts"`
+	T     string          `json:"t"`
+	Name  string          `json:"name"`
+	Model string          `json:"model"`
+	P     []float64       `json:"p"`
+	Yw    *float64        `json:"yw"`
+	Pt    *float64        `json:"pt"`
+	W     *int            `json:"w"`
+	O     []float64       `json:"o"`
+	D     []float64       `json:"d"`
+	Ts    json.RawMessage `json:"ts"`
 }
 
 func (g *Game) handleMessage(c *Conn, data []byte) {
@@ -851,6 +873,9 @@ func (g *Game) handleMessage(c *Conn, data []byte) {
 			n++
 		}
 		me := g.makePlayer(candidate, false, c)
+		if validModel(msg.Model) {
+			me.Model = msg.Model
+		}
 		c.player = me
 		infos := make([]map[string]any, 0, len(g.players))
 		for _, p := range g.players {

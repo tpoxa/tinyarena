@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { makeGun } from '/js/guns.js';
+import { buildModel } from '/js/models.js';
 
 const INTERP_DELAY = 0.12; // render remotes this far in the past
 
@@ -40,93 +41,7 @@ function nameSprite(name, color) {
   return spr;
 }
 
-// friendly toy space-trooper: white armor, player-color accents, no scary bits.
-// parts wired into userData for animation; exported for the dev model viewer.
-export function playerMesh(color) {
-  const g = new THREE.Group();
-  const col = new THREE.Color(color);
-  const white = new THREE.MeshLambertMaterial({ color: 0xdfe3ff });
-  const lightGrey = new THREE.MeshLambertMaterial({ color: 0xc9cef5 });
-  const joint = new THREE.MeshLambertMaterial({ color: 0x2a2e55 });
-  const accent = new THREE.MeshLambertMaterial({ color: col.clone().lerp(new THREE.Color(0xffffff), 0.15) });
-  const glowCyan = new THREE.MeshBasicMaterial({ color: 0x9be8ff });
-
-  // stubby legs — pivot at the hip so they can swing
-  function leg(x) {
-    const hip = new THREE.Group();
-    hip.position.set(x, 0.72, 0);
-    const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.4, 4, 10), accent);
-    limb.position.y = -0.34;
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), joint);
-    foot.scale.set(1.1, 0.6, 1.3);
-    foot.position.set(0, -0.62, -0.02);
-    hip.add(limb, foot);
-    return hip;
-  }
-  const legL = leg(-0.13);
-  const legR = leg(0.13);
-
-  // upper body — pivots so it can pitch with aim
-  const upper = new THREE.Group();
-  upper.position.y = 1.0;
-
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.26, 0.35, 4, 14), white);
-  torso.position.y = 0.08;
-  const belly = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.05), accent);
-  belly.position.set(0, 0.12, -0.24);
-  const core = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.03), glowCyan);
-  core.position.set(0, 0.13, -0.265);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 14, 12), white);
-  head.scale.set(1, 0.92, 1);
-  head.position.y = 0.62;
-  const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), glowCyan);
-  eyeL.scale.set(1.2, 1.7, 0.5);
-  eyeL.position.set(-0.06, 0.64, -0.172);
-  const eyeR = eyeL.clone();
-  eyeR.position.x = 0.06;
-  const earL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), accent);
-  earL.position.set(-0.19, 0.62, 0);
-  const earR = earL.clone();
-  earR.position.x = 0.19;
-
-  const shoulderL = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), accent);
-  shoulderL.position.set(-0.32, 0.32, 0);
-  const shoulderR = shoulderL.clone();
-  shoulderR.position.x = 0.32;
-
-  // backpack with soft thrusters instead of anything horn-like
-  const pack = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.3, 0.14), lightGrey);
-  pack.position.set(0, 0.15, 0.27);
-  const thrL = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 10), joint);
-  thrL.position.set(-0.09, -0.03, 0.29);
-  const thrR = thrL.clone();
-  thrR.position.x = 0.09;
-  const jetL = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.02, 10), glowCyan);
-  jetL.position.set(-0.09, -0.09, 0.29);
-  const jetR = jetL.clone();
-  jetR.position.x = 0.09;
-
-  // arms reach toward the gun
-  const armR = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.24, 4, 8), joint);
-  armR.position.set(0.24, 0.16, -0.16);
-  armR.rotation.x = 1.1;
-  const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.22, 4, 8), joint);
-  armL.position.set(-0.12, 0.12, -0.24);
-  armL.rotation.set(1.2, -0.5, 0);
-
-  const gunMount = new THREE.Group();
-  gunMount.position.set(0.18, 0.18, -0.38);
-  gunMount.scale.setScalar(0.9);
-  gunMount.add(makeGun(0));
-
-  upper.add(torso, belly, core, head, eyeL, eyeR, earL, earR,
-    shoulderL, shoulderR, pack, thrL, thrR, jetL, jetR, armR, armL, gunMount);
-
-  g.add(legL, legR, upper);
-  g.userData.parts = { legL, legR, upper, gunMount, phase: 0, weapon: 0, prev: null };
-  return g;
-}
+const TAG_HOLD = 0.4; // seconds a name stays up after the crosshair leaves
 
 export class Remotes {
   constructor(scene, effects, audio) {
@@ -141,11 +56,14 @@ export class Remotes {
 
   addPlayer(info) {
     if (this.players.has(info.id) || info.id === this.myId) return;
-    const group = playerMesh(info.color);
-    group.add(nameSprite(info.name, info.color));
+    const group = buildModel(info.model, info.color);
+    const tag = nameSprite(info.name, info.color);
+    tag.position.y = new THREE.Box3().setFromObject(group).max.y + 0.45;
+    tag.visible = false; // revealed by crosshair hover
+    group.add(tag);
     group.visible = false;
     this.scene.add(group);
-    this.players.set(info.id, { info, group, buf: [], dead: true });
+    this.players.set(info.id, { info, group, tag, hoverUntil: 0, buf: [], dead: true });
   }
 
   removePlayer(id) {
@@ -176,10 +94,10 @@ export class Remotes {
     return out;
   }
 
-  // first body hit along segment a -> a+d; returns { t, point } or null
+  // first body hit along segment a -> a+d; returns { t, point, id } or null
   segmentHit(a, d) {
     let best = null;
-    for (const r of this.players.values()) {
+    for (const [id, r] of this.players) {
       if (r.dead || !r.group.visible) continue;
       const p = r.group.position;
       const c = [p.x, p.y + 0.9, p.z];
@@ -189,14 +107,14 @@ export class Remotes {
       const b = (m[0] * d[0] + m[1] * d[1] + m[2] * d[2]) / dd;
       const cc = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2] - 0.81) / dd;
       if (cc < 0) { // segment starts inside the body — point-blank hit
-        if (!best || best.t > 0) best = { t: 0, point: [a[0], a[1], a[2]] };
+        if (!best || best.t > 0) best = { t: 0, point: [a[0], a[1], a[2]], id };
         continue;
       }
       const disc = b * b - cc;
       if (disc < 0) continue;
       const t = -b - Math.sqrt(disc);
       if (t < 0 || t > 1) continue;
-      if (!best || t < best.t) best = { t, point: [a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t] };
+      if (!best || t < best.t) best = { t, point: [a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t], id };
     }
     return best;
   }
@@ -249,10 +167,21 @@ export class Remotes {
     }
   }
 
-  update(dt) {
+  update(dt, eye, aimDir) {
     this.time += dt;
     const renderT = performance.now() / 1000 - INTERP_DELAY;
+
+    // crosshair hover reveals that player's name tag for a moment
+    if (eye && aimDir) {
+      const hit = this.segmentHit(eye, [aimDir[0] * 70, aimDir[1] * 70, aimDir[2] * 70]);
+      if (hit) {
+        const r = this.players.get(hit.id);
+        if (r) r.hoverUntil = this.time + TAG_HOLD;
+      }
+    }
+
     for (const r of this.players.values()) {
+      if (r.tag) r.tag.visible = this.time < r.hoverUntil && !r.dead;
       if (r.quad && !r.aura) {
         r.aura = quadAura();
         r.group.add(r.aura);
@@ -298,7 +227,7 @@ export class Remotes {
           const swing = Math.sin(parts.phase) * 0.75 * amp;
           parts.legL.rotation.x = swing;
           parts.legR.rotation.x = -swing;
-          parts.upper.position.y = 1.0 + Math.abs(Math.cos(parts.phase)) * 0.05 * amp;
+          parts.upper.position.y = parts.upperBaseY + Math.abs(Math.cos(parts.phase)) * 0.05 * amp;
         }
         parts.prev = { x: p.x, z: p.z };
         parts.upper.rotation.x = (a.pt + (b.pt - a.pt) * k) * 0.55;
