@@ -359,8 +359,12 @@ export class LocalPlayer {
       const r = this.localRockets[i];
       const delta = r.dir.clone().multiplyScalar(w.speed * dt);
       const prev = [r.pos.x, r.pos.y, r.pos.z];
-      const t = raycastWorld(prev, [delta.x, delta.y, delta.z]);
-      if (t !== null && t <= 1) {
+      // nearest of wall / body — the server owns damage, this is the visual boom
+      let t = raycastWorld(prev, [delta.x, delta.y, delta.z]);
+      if (t !== null && t > 1) t = null;
+      const body = this.remotesRef?.segmentHit(prev, [delta.x, delta.y, delta.z]);
+      if (body && (t === null || body.t < t)) t = body.t;
+      if (t !== null) {
         const at = r.pos.clone().addScaledVector(delta, t);
         this.effects.rocketTrail(prev, [at.x, at.y, at.z]);
         this.effects.explosion([at.x, at.y, at.z]);
@@ -397,6 +401,7 @@ export class LocalPlayer {
     this.vel.x += v[0];
     this.vel.y += v[1];
     this.vel.z += v[2];
-    if (v[1] > 1) this.onGround = false;
+    // a real shove breaks ground contact, or friction eats it before the next frame
+    if (v[1] > 0.5 || Math.hypot(v[0], v[1], v[2]) > 3) this.onGround = false;
   }
 }

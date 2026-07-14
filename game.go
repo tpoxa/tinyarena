@@ -435,6 +435,9 @@ func segmentVsPlayer(a, d Vec3, p *Player) (float64, bool) {
 	}
 	b := (m[0]*d[0] + m[1]*d[1] + m[2]*d[2]) / dd
 	cc := (m[0]*m[0] + m[1]*m[1] + m[2]*m[2] - playerRadius*playerRadius) / dd
+	if cc < 0 {
+		return 0, true // segment starts inside the body — point-blank hit
+	}
 	disc := b*b - cc
 	if disc < 0 {
 		return 0, false

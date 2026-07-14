@@ -11,8 +11,10 @@ import { Net } from '/js/net.js';
 import { PICKUP_DEFS, PICKUPS } from '/shared/map.js';
 
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// laptop-friendly: MSAA off on retina (1.5x pixels hide the jaggies already)
+const PIXEL_RATIO = Math.min(window.devicePixelRatio, 1.5);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: window.devicePixelRatio < 1.5 });
+renderer.setPixelRatio(PIXEL_RATIO);
 renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
@@ -125,6 +127,7 @@ net.on('hit', () => { hud.hitmark(); audio.play('hit'); });
 
 net.on('dmg', (msg) => {
   hud.damageFlash(Math.min(1, msg.amount / 60));
+  effects.shake = Math.min(1, effects.shake + msg.amount / 120); // feel the hit
   audio.play('hurt');
 });
 
@@ -232,9 +235,11 @@ window.addEventListener('keyup', (e) => {
 
 let last = performance.now();
 let fps = 60;
+const FRAME_MIN = 1000 / 62; // render cap ~60fps — keeps 120Hz laptops cool
 
 function loop(now) {
   requestAnimationFrame(loop);
+  if (now - last < FRAME_MIN - 0.5) return;
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   fps = fps * 0.95 + (1 / Math.max(1e-3, dt)) * 0.05;

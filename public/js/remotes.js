@@ -178,6 +178,10 @@ export class Remotes {
       if (dd < 1e-9) continue;
       const b = (m[0] * d[0] + m[1] * d[1] + m[2] * d[2]) / dd;
       const cc = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2] - 0.81) / dd;
+      if (cc < 0) { // segment starts inside the body — point-blank hit
+        if (!best || best.t > 0) best = { t: 0, point: [a[0], a[1], a[2]] };
+        continue;
+      }
       const disc = b * b - cc;
       if (disc < 0) continue;
       const t = -b - Math.sqrt(disc);
