@@ -122,7 +122,7 @@ net.on('die', (msg) => {
       );
     }
     audio.play('die');
-    hud.showDeath(suicide ? null : killer, voidDeath);
+    hud.showDeath(suicide ? null : killer, msg.w, voidDeath);
   } else if (msg.killer === net.myId) {
     audio.play('frag');
     hud.centerMessage(`YOU FRAGGED ${victim.toUpperCase()}`);

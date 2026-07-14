@@ -102,12 +102,19 @@ export class Hud {
     this.hitmarker.classList.add('pop');
   }
 
-  showDeath(killerName, voidDeath = false) {
+  showDeath(killerName, weaponId, voidDeath = false) {
     this.vignetteLevel = 0; // no blood-red wash over the death cam
     this.vignette.style.opacity = 0;
-    this.deathMsg.textContent = voidDeath
-      ? 'YOU FELL INTO THE VOID'
-      : killerName ? `FRAGGED BY ${killerName.toUpperCase()}` : 'YOU FRAGGED YOURSELF';
+    let msg;
+    if (!killerName) {
+      msg = voidDeath ? 'YOU FELL INTO THE VOID' : 'YOU FRAGGED YOURSELF';
+    } else if (weaponId === -1) {
+      msg = `KNOCKED INTO THE VOID BY ${killerName.toUpperCase()}`;
+    } else {
+      const verb = (WEAPON_VERBS[weaponId] ?? 'fragged').toUpperCase();
+      msg = `${verb} BY ${killerName.toUpperCase()}`;
+    }
+    this.deathMsg.textContent = msg;
     this.deathOverlay.classList.remove('hidden');
     this.respawnAt = performance.now() / 1000 + 3;
   }
