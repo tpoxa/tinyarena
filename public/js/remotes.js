@@ -5,6 +5,24 @@ import { makeGun } from '/js/guns.js';
 
 const INTERP_DELAY = 0.12; // render remotes this far in the past
 
+// electric cage + glow around a quad-damage holder
+function quadAura() {
+  const g = new THREE.Group();
+  const cage = new THREE.Mesh(
+    new THREE.BoxGeometry(1.0, 2.0, 1.0),
+    new THREE.MeshBasicMaterial({
+      color: 0x5b9bff, wireframe: true, transparent: true, opacity: 0.55,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }),
+  );
+  cage.position.y = 1.0;
+  const light = new THREE.PointLight(0x6ba8ff, 18, 9);
+  light.position.y = 1.2;
+  g.add(cage, light);
+  g.userData = { cage, light };
+  return g;
+}
+
 function nameSprite(name, color) {
   const c = document.createElement('canvas');
   c.width = 256; c.height = 56;
@@ -118,6 +136,7 @@ export class Remotes {
     this.players = new Map(); // id -> { info, group, buf: [{t, p, yw, pt}], dead }
     this.rockets = new Map(); // id -> mesh
     this.myId = null;
+    this.time = 0;
   }
 
   addPlayer(info) {
@@ -177,6 +196,7 @@ export class Remotes {
       r.info.frags = s.f;
       r.info.deaths = s.dt;
       r.wantWeapon = s.w;
+      r.quad = !!s.q;
       const wasDead = r.dead;
       r.dead = !!s.d;
       if (r.dead && !wasDead) {
@@ -216,8 +236,22 @@ export class Remotes {
   }
 
   update(dt) {
+    this.time += dt;
     const renderT = performance.now() / 1000 - INTERP_DELAY;
     for (const r of this.players.values()) {
+      if (r.quad && !r.aura) {
+        r.aura = quadAura();
+        r.group.add(r.aura);
+      }
+      if (r.aura) {
+        r.aura.visible = r.quad && !r.dead;
+        if (r.aura.visible) {
+          const k = 1 + Math.sin(this.time * 7) * 0.06;
+          r.aura.userData.cage.scale.setScalar(k);
+          r.aura.userData.cage.rotation.y += dt * 1.4;
+          r.aura.userData.light.intensity = 14 + Math.sin(this.time * 9) * 6;
+        }
+      }
       if (r.dead || r.buf.length === 0) continue;
       let a = r.buf[0], b = r.buf[r.buf.length - 1];
       for (let i = 0; i < r.buf.length - 1; i++) {

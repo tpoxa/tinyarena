@@ -44,6 +44,11 @@ type Player struct {
 	LastFire  map[int]float64
 	LastSeen  float64
 
+	QuadUntil  float64 // quad damage buff expiry
+	Streak     int     // frags since last death
+	MultiN     int     // frags inside the multi-kill window
+	LastFragAt float64
+
 	// who hit us last — void falls within 4s credit them with the frag
 	LastAttacker int
 	LastHitAt    float64
@@ -272,6 +277,8 @@ func (g *Game) respawn(p *Player) {
 	p.HP = g.arena.MaxHP
 	p.Armor = 0
 	p.Ammo = copyAmmo(g.arena.StartAmmo)
+	p.QuadUntil = 0
+	p.MultiN = 0
 	if p.Bot {
 		p.Weapon = 0
 	}
@@ -286,6 +293,15 @@ func eyePos(p *Player) Vec3 { return Vec3{p.Pos[0], p.Pos[1] + eyeHeight, p.Pos[
 func (g *Game) applyDamage(target *Player, dmg int, attacker *Player, weaponID int, knock *Vec3) {
 	if target.Dead || nowSec() < g.matchLockedUntil {
 		return
+	}
+	// quad multiplies damage dealt to others (not self-splash) and hits harder
+	if attacker != nil && attacker.ID != target.ID && nowSec() < attacker.QuadUntil {
+		dmg = int(math.Round(float64(dmg) * g.arena.QuadMultiplier))
+		if knock != nil {
+			knock[0] *= 1.4
+			knock[1] *= 1.4
+			knock[2] *= 1.4
+		}
 	}
 	remaining := dmg
 	if target.Armor > 0 {
@@ -325,13 +341,43 @@ func (g *Game) applyDamage(target *Player, dmg int, attacker *Player, weaponID i
 	}
 }
 
+func multiLabel(n int) string {
+	switch {
+	case n == 2:
+		return "DOUBLE KILL"
+	case n == 3:
+		return "TRIPLE KILL"
+	case n == 4:
+		return "MULTI KILL"
+	case n >= 5:
+		return "MONSTER KILL"
+	}
+	return ""
+}
+
+func spreeLabel(n int) string {
+	switch n {
+	case 5:
+		return "KILLING SPREE"
+	case 8:
+		return "RAMPAGE"
+	case 12:
+		return "GODLIKE"
+	}
+	return ""
+}
+
 func (g *Game) kill(victim, attacker *Player, weaponID int) {
 	if victim.Dead {
 		return
 	}
+	t := nowSec()
 	victim.Dead = true
 	victim.Deaths++
-	victim.RespawnAt = nowSec() + g.arena.RespawnSeconds
+	victim.Streak = 0
+	victim.MultiN = 0
+	victim.QuadUntil = 0 // quad dies with you
+	victim.RespawnAt = t + g.arena.RespawnSeconds
 	suicide := attacker == nil || attacker.ID == victim.ID
 	killerID := victim.ID
 	if suicide {
@@ -341,8 +387,23 @@ func (g *Game) kill(victim, attacker *Player, weaponID int) {
 	} else {
 		attacker.Frags++
 		killerID = attacker.ID
+		attacker.Streak++
+		if t-attacker.LastFragAt <= 3 {
+			attacker.MultiN++
+		} else {
+			attacker.MultiN = 1
+		}
+		attacker.LastFragAt = t
 	}
 	g.broadcast(map[string]any{"t": "die", "victim": victim.ID, "killer": killerID, "w": weaponID}, 0)
+	if !suicide {
+		if lbl := multiLabel(attacker.MultiN); lbl != "" {
+			g.broadcast(map[string]any{"t": "streak", "id": attacker.ID, "name": attacker.Name, "n": attacker.MultiN, "label": lbl}, 0)
+		}
+		if lbl := spreeLabel(attacker.Streak); lbl != "" {
+			g.broadcast(map[string]any{"t": "streak", "id": attacker.ID, "name": attacker.Name, "n": attacker.Streak, "label": lbl, "spree": true}, 0)
+		}
+	}
 	if !suicide && attacker.Frags >= g.arena.FragLimit && nowSec() >= g.matchLockedUntil {
 		g.broadcast(map[string]any{"t": "win", "id": attacker.ID, "name": attacker.Name, "frags": attacker.Frags}, 0)
 		g.matchLockedUntil = nowSec() + 6
@@ -353,6 +414,7 @@ func (g *Game) kill(victim, attacker *Player, weaponID int) {
 func (g *Game) resetMatch() {
 	for _, p := range g.players {
 		p.Frags, p.Deaths = 0, 0
+		p.Streak, p.MultiN, p.QuadUntil = 0, 0, 0
 		p.Dead = true
 		p.RespawnAt = nowSec() + 0.5
 	}
@@ -600,6 +662,11 @@ func (g *Game) stepPickups() {
 			}
 			def := g.arena.PickupDefs[pk.Spec.Type]
 			used := false
+			if def.Buff == "quad" {
+				p.QuadUntil = t + def.Duration
+				used = true
+				g.broadcast(map[string]any{"t": "note", "msg": p.Name + " HAS QUAD DAMAGE"}, p.ID)
+			}
 			if def.HP > 0 {
 				cap := g.arena.MaxHP
 				if def.Overheal {
@@ -674,6 +741,7 @@ type snapPlayer struct {
 	D  int     `json:"d"`
 	F  int     `json:"f"`
 	Dt int     `json:"dt"`
+	Q  int     `json:"q,omitempty"` // 1 while quad damage is active
 }
 
 type snapRocket struct {
@@ -684,17 +752,22 @@ type snapRocket struct {
 }
 
 func (g *Game) sendSnapshots() {
+	t := nowSec()
 	players := make([]snapPlayer, 0, len(g.players))
 	for _, p := range g.players {
 		d := 0
 		if p.Dead {
 			d = 1
 		}
+		q := 0
+		if t < p.QuadUntil {
+			q = 1
+		}
 		players = append(players, snapPlayer{
 			I:  p.ID,
 			P:  Vec3{round2(p.Pos[0]), round2(p.Pos[1]), round2(p.Pos[2])},
 			Yw: round3(p.Yaw), Pt: round3(p.Pitch),
-			W: p.Weapon, D: d, F: p.Frags, Dt: p.Deaths,
+			W: p.Weapon, D: d, F: p.Frags, Dt: p.Deaths, Q: q,
 		})
 	}
 	rockets := make([]snapRocket, 0, len(g.rockets))
@@ -714,7 +787,7 @@ func (g *Game) sendSnapshots() {
 			"t": "snap", "ts": ts,
 			"players": players,
 			"rockets": rockets,
-			"you":     map[string]any{"hp": p.HP, "ar": p.Armor, "ammo": p.Ammo},
+			"you":     map[string]any{"hp": p.HP, "ar": p.Armor, "ammo": p.Ammo, "quad": round2(math.Max(0, p.QuadUntil-t))},
 		})
 	}
 }

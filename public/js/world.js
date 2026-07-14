@@ -10,6 +10,8 @@ export class World {
     this.time = 0;
     this.pads = [];
     this.pickupMeshes = new Map();
+    this.edgeMats = [];
+    this.beamMats = [];
 
     scene.background = new THREE.Color(0x06070f);
     scene.fog = new THREE.FogExp2(0x0a0c1e, 0.011);
@@ -20,6 +22,7 @@ export class World {
     this.buildTeleporters();
     this.buildPickups();
     this.buildSky();
+    this.buildOutlands();
   }
 
   buildLights() {
@@ -36,18 +39,24 @@ export class World {
     const c = document.createElement('canvas');
     c.width = c.height = 256;
     const g = c.getContext('2d');
-    g.fillStyle = '#14162a';
+    g.fillStyle = '#0b0e20';
     g.fillRect(0, 0, 256, 256);
-    g.strokeStyle = 'rgba(91,108,255,0.28)';
-    g.lineWidth = 2;
-    g.strokeRect(0, 0, 256, 256);
-    g.strokeStyle = 'rgba(91,108,255,0.10)';
+    // tron light-grid: hot cyan cell border with a soft halo
+    g.shadowColor = 'rgba(39,224,255,0.9)';
+    g.shadowBlur = 10;
+    g.strokeStyle = 'rgba(39,224,255,0.5)';
+    g.lineWidth = 2.5;
+    g.strokeRect(1, 1, 254, 254);
+    g.shadowBlur = 0;
+    g.strokeStyle = 'rgba(39,224,255,0.13)';
+    g.lineWidth = 1;
     for (let i = 64; i < 256; i += 64) {
       g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 256); g.stroke();
       g.beginPath(); g.moveTo(0, i); g.lineTo(256, i); g.stroke();
     }
     const tex = new THREE.CanvasTexture(c);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 8; // keep grid lines crisp at grazing angles
     return tex;
   }
 
@@ -67,12 +76,25 @@ export class World {
       mesh.position.set(...b.p);
       this.scene.add(mesh);
 
-      const edges = new THREE.LineSegments(
-        new THREE.EdgesGeometry(geo),
-        new THREE.LineBasicMaterial({ color: b.e, transparent: true, opacity: 0.8 }),
-      );
+      const edgeMat = new THREE.LineBasicMaterial({
+        color: b.e, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
       edges.position.copy(mesh.position);
       this.scene.add(edges);
+      this.edgeMats.push({ mat: edgeMat, phase: idx * 0.9 });
+
+      // tall slim boxes are the corner pillars — give them recognizer sky-beams
+      if (b.s[1] >= 5 && b.s[0] <= 3) {
+        const beamMat = new THREE.MeshBasicMaterial({
+          color: b.e, transparent: true, opacity: 0.05,
+          blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+        });
+        const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.7, 70, 12, 1, true), beamMat);
+        beam.position.set(b.p[0], b.p[1] + b.s[1] / 2 + 35, b.p[2]);
+        this.scene.add(beam);
+        this.beamMats.push({ mat: beamMat, base: 0.05, phase: idx });
+      }
     });
   }
 
@@ -93,6 +115,16 @@ export class World {
       ring.position.copy(disc.position);
       this.scene.add(ring);
       this.pads.push({ disc, ring, base: disc.position.y });
+
+      // launch column: soft light shaft rising off the pad
+      const colMat = new THREE.MeshBasicMaterial({
+        color: 0x27e0ff, transparent: true, opacity: 0.07,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      });
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(pad.r * 0.8, pad.r, 5.5, 18, 1, true), colMat);
+      col.position.set(pad.p[0], pad.p[1] + 2.8, pad.p[2]);
+      this.scene.add(col);
+      this.beamMats.push({ mat: colMat, base: 0.07, phase: pad.p[0] + pad.p[2] });
     }
   }
 
@@ -118,7 +150,24 @@ export class World {
 
   pickupMesh(type) {
     const g = new THREE.Group();
-    if (type === 'mega' || type === 'hp25') {
+    if (type === 'quad') {
+      // electric-blue core in a counter-spinning wire shell
+      const core = new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.42, 0.42),
+        new THREE.MeshBasicMaterial({ color: 0xbfe0ff }),
+      );
+      const shell = new THREE.Mesh(
+        new THREE.BoxGeometry(0.8, 0.8, 0.8),
+        new THREE.MeshBasicMaterial({
+          color: 0x5b9bff, wireframe: true, transparent: true, opacity: 0.9,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        }),
+      );
+      const light = new THREE.PointLight(0x6ba8ff, 26, 12);
+      light.position.y = 0.2;
+      g.add(core, shell, light);
+      g.userData.quadShell = shell;
+    } else if (type === 'mega' || type === 'hp25') {
       const color = type === 'mega' ? 0xff3df0 : 0xffb43d;
       const size = type === 'mega' ? 0.85 : 0.55;
       const mat = new THREE.MeshBasicMaterial({ color });
@@ -162,6 +211,20 @@ export class World {
     if (pk) { pk.active = active; pk.mesh.visible = active; }
   }
 
+  buildOutlands() {
+    // infinite data-plane under the arena — visible over every ledge and on the way down
+    const grid = new THREE.GridHelper(700, 70, 0x27e0ff, 0x2a3480);
+    grid.position.y = -19;
+    for (const m of grid.material instanceof Array ? grid.material : [grid.material]) {
+      m.transparent = true;
+      m.opacity = 0.33;
+      m.blending = THREE.AdditiveBlending;
+      m.depthWrite = false;
+      m.fog = false;
+    }
+    this.scene.add(grid);
+  }
+
   buildSky() {
     const starGeo = new THREE.BufferGeometry();
     const n = 1600;
@@ -192,6 +255,19 @@ export class World {
       if (!pk.active) continue;
       pk.mesh.rotation.y += dt * 1.8;
       pk.mesh.position.y = pk.base + Math.sin(this.time * 2.4) * 0.12;
+      const shell = pk.mesh.userData.quadShell;
+      if (shell) {
+        shell.rotation.x += dt * 1.3;
+        shell.rotation.z -= dt * 0.9;
+        shell.scale.setScalar(1 + Math.sin(this.time * 5) * 0.08);
+      }
+    }
+    // slow energy wave around the arena edges; beams breathe
+    for (const e of this.edgeMats) {
+      e.mat.opacity = 0.62 + Math.sin(this.time * 1.6 + e.phase) * 0.25;
+    }
+    for (const b of this.beamMats) {
+      b.mat.opacity = b.base * (1 + Math.sin(this.time * 2.1 + b.phase) * 0.45);
     }
   }
 }

@@ -121,6 +121,46 @@ export class AudioEngine {
           [440, 550, 660, 880].forEach((f, i) =>
             setTimeout(() => this.osc('square', f, f, 0.18, 0.3 * gain), i * 130));
           break;
+        case 'quad':
+          this.osc('sawtooth', 70, 280, 0.55, 0.5 * gain);
+          this.osc('sine', 440, 1760, 0.4, 0.22 * gain);
+          setTimeout(() => this.noise(0.3, 6000, 0.12 * gain, 2000), 150);
+          break;
+      }
+    } catch { /* audio must never break the game */ }
+  }
+
+  // escalating announcer stab — higher tier, higher and longer arpeggio
+  streak(tier = 2, mine = true) {
+    try {
+      this.ensure();
+      const base = 260 * Math.pow(1.14, Math.min(6, tier));
+      const peak = mine ? 0.38 : 0.16;
+      [1, 1.335, 1.5, 2].slice(0, Math.min(4, tier + 1)).forEach((m, i) =>
+        setTimeout(() => this.osc('square', base * m, base * m, 0.14, peak), i * 85));
+      this.noise(0.2, 3200, 0.14 * (mine ? 1 : 0.4));
+    } catch { /* audio must never break the game */ }
+  }
+
+  // low electric double-oscillator drone while quad damage is active
+  setQuadHum(on) {
+    try {
+      this.ensure();
+      if (on && !this.hum) {
+        const o1 = this.ctx.createOscillator();
+        o1.type = 'sawtooth'; o1.frequency.value = 54;
+        const o2 = this.ctx.createOscillator();
+        o2.type = 'sine'; o2.frequency.value = 108.7; // detuned octave: slow beat
+        const g = this.ctx.createGain();
+        g.gain.value = 0.045;
+        o1.connect(g); o2.connect(g); g.connect(this.master);
+        o1.start(); o2.start();
+        this.hum = { o1, o2, g };
+      } else if (!on && this.hum) {
+        const { o1, o2, g } = this.hum;
+        this.hum = null;
+        g.gain.linearRampToValueAtTime(0.0001, this.ctx.currentTime + 0.25);
+        setTimeout(() => { o1.stop(); o2.stop(); g.disconnect(); }, 350);
       }
     } catch { /* audio must never break the game */ }
   }

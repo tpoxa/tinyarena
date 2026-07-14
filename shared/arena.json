@@ -56,9 +56,11 @@
     { "id": "rkt1", "type": "rockets", "p": [0, 5.5, -24], "respawn": 15 },
     { "id": "rkt2", "type": "rockets", "p": [-21, 7.5, 3], "respawn": 15 },
     { "id": "slg1", "type": "slugs", "p": [-28, 7.5, 0], "respawn": 15 },
-    { "id": "blt1", "type": "bullets", "p": [28, 7.5, 0], "respawn": 15 }
+    { "id": "blt1", "type": "bullets", "p": [28, 7.5, 0], "respawn": 15 },
+    { "id": "quad", "type": "quad", "p": [24, 7.5, 0], "respawn": 60 }
   ],
   "pickupDefs": {
+    "quad": { "buff": "quad", "duration": 20, "label": "QUAD DAMAGE" },
     "mega": { "hp": 100, "overheal": true, "label": "MEGA HEALTH" },
     "hp25": { "hp": 25, "label": "+25 HEALTH" },
     "armor50": { "armor": 50, "label": "+50 ARMOR" },
@@ -92,6 +94,7 @@
   "startAmmo": { "bullets": 100, "rockets": 10, "slugs": 5 },
   "maxAmmo": { "bullets": 200, "rockets": 25, "slugs": 15 },
   "selfSplashScale": 0.35,
+  "quadMultiplier": 3,
   "maxHp": 100,
   "maxOverheal": 200,
   "maxArmor": 150,

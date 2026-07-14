@@ -60,6 +60,8 @@ net.on('pleave', (msg) => {
   remotes.removePlayer(msg.id);
 });
 
+let quadOn = false;
+
 net.on('snap', (msg) => {
   remotes.onSnapshot(msg);
   for (const s of msg.players) {
@@ -69,6 +71,24 @@ net.on('snap', (msg) => {
   if (msg.you) {
     player.ammo = { ...msg.you.ammo };
     hud.setStats(msg.you.hp, msg.you.ar, player.ammo, player.weapon);
+    const q = msg.you.quad ?? 0;
+    hud.setQuad(q);
+    if ((q > 0) !== quadOn) {
+      quadOn = q > 0;
+      document.body.classList.toggle('quad-active', quadOn);
+      audio.setQuadHum(quadOn);
+      if (quadOn) audio.play('quad');
+    }
+  }
+});
+
+net.on('streak', (msg) => {
+  if (msg.id === net.myId) {
+    hud.streakBanner(msg.label, msg.n);
+    audio.streak(msg.n, true);
+  } else {
+    hud.centerMessage(`${msg.name.toUpperCase()} — ${msg.label}`);
+    audio.streak(msg.n, false);
   }
 });
 
@@ -134,7 +154,7 @@ net.on('pickup', (msg) => {
   if (!msg.active && msg.by === net.myId) {
     const def = PICKUP_DEFS[PICKUPS.find(p => p.id === msg.id)?.type];
     hud.pickupMessage(msg.label ?? 'PICKED UP');
-    audio.play(def?.overheal ? 'mega' : 'pickup');
+    if (def?.buff !== 'quad') audio.play(def?.overheal ? 'mega' : 'pickup'); // quad has its own fanfare
   }
 });
 

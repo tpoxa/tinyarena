@@ -26,6 +26,9 @@ export class Hud {
     this.hitmarker = $('hitmarker');
     this.pingEl = $('hud-ping');
     this.fpsEl = $('hud-fps');
+    this.streakEl = $('streak-banner');
+    this.quadHud = $('quad-hud');
+    this.quadSecs = $('quad-secs');
     this.statHp = document.querySelector('.stat-hp');
     this.slots = [...document.querySelectorAll('.wslot')];
     this.respawnAt = 0;
@@ -65,6 +68,20 @@ export class Hud {
     this.centerMsg.classList.remove('show');
     void this.centerMsg.offsetWidth;
     this.centerMsg.classList.add('show');
+  }
+
+  streakBanner(label, tier) {
+    this.streakEl.textContent = label;
+    this.streakEl.dataset.tier = Math.min(5, tier);
+    this.streakEl.classList.remove('show');
+    void this.streakEl.offsetWidth;
+    this.streakEl.classList.add('show');
+  }
+
+  setQuad(secs) {
+    const on = secs > 0;
+    this.quadHud.classList.toggle('hidden', !on);
+    if (on) this.quadSecs.textContent = Math.ceil(secs);
   }
 
   pickupMessage(text) {

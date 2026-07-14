@@ -43,12 +43,14 @@ type PickupSpec struct {
 }
 
 type PickupDef struct {
-	HP       int    `json:"hp"`
-	Overheal bool   `json:"overheal"`
-	Armor    int    `json:"armor"`
-	Ammo     string `json:"ammo"`
-	Amount   int    `json:"amount"`
-	Label    string `json:"label"`
+	HP       int     `json:"hp"`
+	Overheal bool    `json:"overheal"`
+	Armor    int     `json:"armor"`
+	Ammo     string  `json:"ammo"`
+	Amount   int     `json:"amount"`
+	Buff     string  `json:"buff"`
+	Duration float64 `json:"duration"`
+	Label    string  `json:"label"`
 }
 
 type Weapon struct {
@@ -80,6 +82,7 @@ type Arena struct {
 	StartAmmo       map[string]int       `json:"startAmmo"`
 	MaxAmmo         map[string]int       `json:"maxAmmo"`
 	SelfSplashScale float64              `json:"selfSplashScale"`
+	QuadMultiplier  float64              `json:"quadMultiplier"`
 	MaxHP           int                  `json:"maxHp"`
 	MaxOverheal     int                  `json:"maxOverheal"`
 	MaxArmor        int                  `json:"maxArmor"`
@@ -101,6 +104,9 @@ func loadArena() *Arena {
 	var a Arena
 	if err := json.Unmarshal(raw, &a); err != nil {
 		panic(err)
+	}
+	if a.QuadMultiplier == 0 {
+		a.QuadMultiplier = 3
 	}
 	return &a
 }
