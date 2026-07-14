@@ -16,6 +16,7 @@ const (
 	playerRadius = 0.9
 	pickupRadius = 1.5
 	eyeHeight    = 1.62
+	maxBots      = 8
 )
 
 var colors = []string{"#5b6cff", "#27e0ff", "#ff3df0", "#ff9a3d", "#7dff3d", "#ff4b4b", "#ffe83d", "#3dffc8"}
@@ -135,6 +136,63 @@ func (g *Game) humanCount() int {
 		}
 	}
 	return n
+}
+
+func (g *Game) botCount() int {
+	n := 0
+	for _, p := range g.players {
+		if p.Bot {
+			n++
+		}
+	}
+	return n
+}
+
+func (g *Game) addBot(by *Player) {
+	if g.botCount() >= maxBots {
+		g.send(by, map[string]any{"t": "note", "msg": "BOT LIMIT REACHED"})
+		return
+	}
+	taken := map[string]bool{}
+	for _, p := range g.players {
+		taken[p.Name] = true
+	}
+	name := ""
+	for _, base := range botNames {
+		if cand := base + "-BOT"; !taken[cand] {
+			name = cand
+			break
+		}
+	}
+	if name == "" { // all six names in play — suffix a random one
+		base := botNames[rand.Intn(len(botNames))] + "-BOT"
+		for n := 2; ; n++ {
+			if cand := fmt.Sprintf("%s.%d", base, n); !taken[cand] {
+				name = cand
+				break
+			}
+		}
+	}
+	bot := g.makePlayer(name, true, nil)
+	g.broadcast(map[string]any{"t": "pjoin", "player": publicInfo(bot)}, 0)
+	log.Printf("+ %s added by %s (%d bots)", bot.Name, by.Name, g.botCount())
+}
+
+func (g *Game) kickBot(by *Player) {
+	var victim *Player // most recently added goes first
+	for _, p := range g.players {
+		if p.Bot && (victim == nil || p.ID > victim.ID) {
+			victim = p
+		}
+	}
+	if victim == nil {
+		g.send(by, map[string]any{"t": "note", "msg": "NO BOTS TO KICK"})
+		return
+	}
+	delete(g.players, victim.ID)
+	g.broadcast(map[string]any{"t": "pleave", "id": victim.ID}, 0)
+	g.broadcast(map[string]any{"t": "note", "msg": fmt.Sprintf("%s KICKED %s", by.Name, victim.Name)}, 0)
+	log.Printf("- %s kicked by %s (%d bots)", victim.Name, by.Name, g.botCount())
 }
 
 // ---------------------------------------------------------------- messaging
@@ -744,6 +802,10 @@ func (g *Game) handleMessage(c *Conn, data []byte) {
 		if msg.W != nil {
 			g.handleFire(me, *msg.W, msg.O, msg.D)
 		}
+	case "addbot":
+		g.addBot(me)
+	case "kickbot":
+		g.kickBot(me)
 	case "ping":
 		g.send(me, map[string]any{"t": "pong", "ts": msg.Ts})
 	}

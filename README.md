@@ -13,7 +13,7 @@ Env: `PORT` (default 3377), `BOTS` (default 3), `DEV=1` serves `public/` and `sh
 
 ## Play
 
-WASD + mouse, SPACE jump (hold = auto-hop), 1/2/3 or wheel — machinegun / rockets / railgun, TAB scoreboard. Rocket-jump: shoot at your feet mid-jump.
+WASD + mouse, SPACE jump (hold = auto-hop), 1/2/3 or wheel — machinegun / rockets / railgun, TAB scoreboard. B adds a bot, N kicks the newest one (any player, max 8). Rocket-jump: shoot at your feet mid-jump.
 
 Colleagues on the same network: `http://<your-lan-ip>:3377`.
 

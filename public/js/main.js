@@ -149,6 +149,8 @@ net.on('reset', () => {
   hud.hideDeath();
 });
 
+net.on('note', (msg) => hud.centerMessage(msg.msg));
+
 net.on('disconnect', () => {
   document.getElementById('join-status').textContent = 'DISCONNECTED — REFRESH TO REJOIN';
   document.getElementById('join').classList.remove('hidden');
@@ -197,7 +199,10 @@ canvas.addEventListener('click', () => {
 });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Tab' && joined) { e.preventDefault(); hud.setScoreboardVisible(true); }
+  if (!joined) return;
+  if (e.code === 'Tab') { e.preventDefault(); hud.setScoreboardVisible(true); }
+  else if (e.code === 'KeyB') net.send({ t: 'addbot' });
+  else if (e.code === 'KeyN') net.send({ t: 'kickbot' });
 });
 window.addEventListener('keyup', (e) => {
   if (e.code === 'Tab') hud.setScoreboardVisible(false);
