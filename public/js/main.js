@@ -65,9 +65,15 @@ net.on('pleave', (msg) => {
 });
 
 let quadOn = false;
+let prevTl = Infinity;
 
 net.on('snap', (msg) => {
   remotes.onSnapshot(msg);
+  if (typeof msg.tl === 'number') {
+    hud.setClock(msg.tl);
+    if (msg.tl <= 5 && msg.tl > 0 && msg.tl < prevTl) audio.play('tick');
+    prevTl = msg.tl;
+  }
   for (const s of msg.players) {
     const info = roster.get(s.i);
     if (info) { info.frags = s.f; info.deaths = s.dt; info.dead = !!s.d; }
@@ -172,7 +178,7 @@ net.on('pickup', (msg) => {
 });
 
 net.on('win', (msg) => {
-  hud.showWin(msg.name);
+  hud.showWin(msg.name, !!msg.timeup);
   audio.play('win');
   player.die();
 });
@@ -180,6 +186,7 @@ net.on('win', (msg) => {
 net.on('reset', () => {
   hud.hideWin();
   hud.hideDeath();
+  hud.setScoreboardVisible(false);
 });
 
 net.on('note', (msg) => hud.centerMessage(msg.msg));
@@ -249,6 +256,7 @@ joinForm.addEventListener('submit', async (e) => {
     }
     for (const pk of welcome.pickups) world.setPickupActive(pk.id, pk.active);
     document.getElementById('sb-limit').textContent = welcome.fragLimit;
+    if (welcome.map) document.getElementById('sb-map').textContent = welcome.map.toUpperCase().replace('-', ' ');
     hud.show();
     audio.ensure();
     net.startLoops(player);

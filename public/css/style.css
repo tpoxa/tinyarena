@@ -330,7 +330,8 @@ html, body {
 
 .win-overlay {
   position: absolute; inset: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 14px;
+  padding-top: 13vh; /* leaves the center free for the end-of-round scoreboard */
   background: rgba(6, 7, 15, 0.82);
 }
 
@@ -432,4 +433,22 @@ body.quad-active .quad-vignette { opacity: 1; }
   position: absolute; left: 26px; bottom: 44px;
   font-family: var(--display); font-size: 15px; letter-spacing: 0.12em;
   text-shadow: 0 0 14px currentColor;
+}
+
+/* ------------------------------------------------ match clock */
+
+.match-clock {
+  position: absolute; left: 50%; top: 20px; transform: translateX(-50%);
+  padding: 6px 18px;
+  font-family: var(--display); font-size: 20px; letter-spacing: 0.12em;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid rgba(91, 108, 255, 0.28);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  font-variant-numeric: tabular-nums;
+}
+
+.match-clock.low {
+  color: var(--hot); border-color: rgba(255, 75, 46, 0.6);
+  animation: blink 1s steps(2) infinite;
 }

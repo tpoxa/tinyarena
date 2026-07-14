@@ -3,8 +3,10 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
+	"strings"
 )
 
 //go:embed public shared
@@ -33,6 +35,12 @@ type Teleporter struct {
 type Spawn struct {
 	P   Vec3    `json:"p"`
 	Yaw float64 `json:"yaw"`
+}
+
+// one-way nav edge (pad flight or drop-off), resolved to nearest nodes at load
+type NavLink struct {
+	From Vec3 `json:"from"`
+	To   Vec3 `json:"to"`
 }
 
 type PickupSpec struct {
@@ -78,6 +86,7 @@ type Arena struct {
 	Pickups         []PickupSpec         `json:"pickups"`
 	PickupDefs      map[string]PickupDef `json:"pickupDefs"`
 	NavNodes        []Vec3               `json:"navNodes"`
+	NavLinks        []NavLink            `json:"navLinks"`
 	Weapons         []Weapon             `json:"weapons"`
 	StartAmmo       map[string]int       `json:"startAmmo"`
 	MaxAmmo         map[string]int       `json:"maxAmmo"`
@@ -89,17 +98,26 @@ type Arena struct {
 	ArmorAbsorb     float64              `json:"armorAbsorb"`
 	FragLimit       int                  `json:"fragLimit"`
 	RespawnSeconds  float64              `json:"respawnSeconds"`
+	MatchSeconds    float64              `json:"matchSeconds"`
 }
 
-func loadArena() *Arena {
-	raw, err := assets.ReadFile("shared/arena.json")
+// loadArena reads shared/maps/<name>.json; the raw bytes are also served to
+// clients at /shared/arena.json so the browser always gets the active map.
+func loadArena(name string) (*Arena, []byte) {
+	path := "shared/maps/" + name + ".json"
+	raw, err := assets.ReadFile(path)
 	if os.Getenv("DEV") == "1" { // match the DEV file server: live data from disk
-		if diskRaw, diskErr := os.ReadFile("shared/arena.json"); diskErr == nil {
+		if diskRaw, diskErr := os.ReadFile(path); diskErr == nil {
 			raw, err = diskRaw, nil
 		}
 	}
 	if err != nil {
-		panic(err)
+		entries, _ := assets.ReadDir("shared/maps")
+		names := make([]string, 0, len(entries))
+		for _, e := range entries {
+			names = append(names, strings.TrimSuffix(e.Name(), ".json"))
+		}
+		panic(fmt.Sprintf("unknown map %q — available: %s", name, strings.Join(names, ", ")))
 	}
 	var a Arena
 	if err := json.Unmarshal(raw, &a); err != nil {
@@ -108,7 +126,10 @@ func loadArena() *Arena {
 	if a.QuadMultiplier == 0 {
 		a.QuadMultiplier = 3
 	}
-	return &a
+	if a.MatchSeconds == 0 {
+		a.MatchSeconds = 480
+	}
+	return &a, raw
 }
 
 // ---------------------------------------------------------------- geometry

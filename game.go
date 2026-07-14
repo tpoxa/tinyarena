@@ -97,6 +97,7 @@ type PickupState struct {
 
 type Game struct {
 	arena            *Arena
+	mapName          string
 	players          map[int]*Player
 	rockets          map[int]*Rocket
 	pickups          map[string]*PickupState
@@ -104,6 +105,8 @@ type Game struct {
 	nextID           int
 	nextRocketID     int
 	matchLockedUntil float64
+	matchSeconds     float64
+	matchEndsAt      float64
 	resetAt          float64
 	humans           atomic.Int64 // read by /healthz outside the game goroutine
 }
@@ -122,6 +125,8 @@ func newGame(arena *Arena) *Game {
 	for _, spec := range arena.Pickups {
 		g.pickups[spec.ID] = &PickupState{Spec: spec, Active: true}
 	}
+	g.matchSeconds = arena.MatchSeconds
+	g.matchEndsAt = nowSec() + g.matchSeconds
 	g.buildNavEdges()
 	return g
 }
@@ -448,6 +453,7 @@ func (g *Game) kill(victim, attacker *Player, weaponID int) {
 }
 
 func (g *Game) resetMatch() {
+	g.matchEndsAt = nowSec() + g.matchSeconds
 	for _, p := range g.players {
 		p.Frags, p.Deaths = 0, 0
 		p.Streak, p.MultiN, p.QuadUntil = 0, 0, 0
@@ -765,6 +771,19 @@ func (g *Game) tick(dt float64) {
 	g.stepBots(dt)
 	g.stepRockets(dt)
 	g.stepPickups()
+	if g.resetAt == 0 && t >= g.matchEndsAt && t >= g.matchLockedUntil {
+		var leader *Player
+		for _, p := range g.players {
+			if leader == nil || p.Frags > leader.Frags {
+				leader = p
+			}
+		}
+		if leader != nil {
+			g.broadcast(map[string]any{"t": "win", "id": leader.ID, "name": leader.Name, "frags": leader.Frags, "timeup": true}, 0)
+		}
+		g.matchLockedUntil = t + 6
+		g.resetAt = g.matchLockedUntil
+	}
 	if g.resetAt > 0 && t >= g.resetAt {
 		g.resetAt = 0
 		g.resetMatch()
@@ -823,7 +842,7 @@ func (g *Game) sendSnapshots() {
 			continue
 		}
 		g.send(p, map[string]any{
-			"t": "snap", "ts": ts,
+			"t": "snap", "ts": ts, "tl": int(math.Ceil(math.Max(0, g.matchEndsAt-t))),
 			"players": players,
 			"rockets": rockets,
 			"you":     map[string]any{"hp": p.HP, "ar": p.Armor, "ammo": p.Ammo, "quad": round2(math.Max(0, p.QuadUntil-t))},
@@ -886,7 +905,7 @@ func (g *Game) handleMessage(c *Conn, data []byte) {
 			pks = append(pks, map[string]any{"id": id, "active": g.pickups[id].Active})
 		}
 		g.send(me, map[string]any{
-			"t": "welcome", "id": me.ID, "color": me.Color, "name": me.Name,
+			"t": "welcome", "id": me.ID, "color": me.Color, "name": me.Name, "map": g.mapName,
 			"players": infos, "pickups": pks, "fragLimit": g.arena.FragLimit,
 		})
 		g.broadcast(map[string]any{"t": "pjoin", "player": publicInfo(me)}, me.ID)

@@ -57,9 +57,18 @@ func envInt(key string, def int) int {
 func main() {
 	port := envInt("PORT", 3377)
 	botCount := envInt("BOTS", 3)
+	mapName := os.Getenv("MAP")
+	if mapName == "" {
+		mapName = "neon-yard"
+	}
 
-	arena := loadArena()
+	arena, arenaRaw := loadArena(mapName)
 	game := newGame(arena)
+	game.mapName = mapName
+	if s := envInt("MATCH_SECONDS", 0); s > 0 {
+		game.matchSeconds = float64(s)
+		game.matchEndsAt = nowSec() + game.matchSeconds
+	}
 	for i := 0; i < botCount; i++ {
 		game.makePlayer(fmt.Sprintf("%s-BOT", botNames[i%len(botNames)]), true, nil)
 	}
@@ -110,6 +119,17 @@ func main() {
 	files := http.FileServer(http.FS(publicFS))
 
 	mux := http.NewServeMux()
+	// the active map is always served at the path the client fetches
+	mux.HandleFunc("/shared/arena.json", func(w http.ResponseWriter, _ *http.Request) {
+		raw := arenaRaw
+		if os.Getenv("DEV") == "1" { // live map data on refresh, like the other shared files
+			if b, err := os.ReadFile("shared/maps/" + mapName + ".json"); err == nil {
+				raw = b
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(raw)
+	})
 	mux.Handle("/shared/", http.StripPrefix("/shared/", http.FileServer(http.FS(sharedFS))))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -138,6 +158,6 @@ func main() {
 		files.ServeHTTP(w, r)
 	})
 
-	log.Printf("TINY ARENA (go) up on http://localhost:%d  (bots: %d)", port, botCount)
+	log.Printf("TINY ARENA (go) up on http://localhost:%d  (map: %s, bots: %d)", port, mapName, botCount)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), mux))
 }

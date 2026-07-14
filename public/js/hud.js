@@ -29,6 +29,7 @@ export class Hud {
     this.streakEl = $('streak-banner');
     this.quadHud = $('quad-hud');
     this.quadSecs = $('quad-secs');
+    this.clockEl = $('match-clock');
     this.statHp = document.querySelector('.stat-hp');
     this.slots = [...document.querySelectorAll('.wslot')];
     this.respawnAt = 0;
@@ -68,6 +69,13 @@ export class Hud {
     this.centerMsg.classList.remove('show');
     void this.centerMsg.offsetWidth;
     this.centerMsg.classList.add('show');
+  }
+
+  setClock(secs) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    this.clockEl.textContent = `${m}:${String(s).padStart(2, '0')}`;
+    this.clockEl.classList.toggle('low', secs <= 30 && secs > 0);
   }
 
   streakBanner(label, tier) {
@@ -121,9 +129,10 @@ export class Hud {
 
   hideDeath() { this.deathOverlay.classList.add('hidden'); }
 
-  showWin(name) {
-    this.winMsg.textContent = `${name.toUpperCase()} WINS`;
+  showWin(name, timeup = false) {
+    this.winMsg.textContent = timeup ? `TIME UP — ${name.toUpperCase()} WINS` : `${name.toUpperCase()} WINS`;
     this.winOverlay.classList.remove('hidden');
+    this.setScoreboardVisible(true); // end-of-round standings
   }
 
   hideWin() { this.winOverlay.classList.add('hidden'); }

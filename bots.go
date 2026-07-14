@@ -9,31 +9,57 @@ var botNames = []string{"CRASH", "ORBB", "SARGE", "MYNX", "BITTERMAN", "PHOBOS"}
 
 var botHalf = Vec3{0.4, 0.9, 0.4}
 
-// visibility graph over the floor waypoints: bots only walk edges with clear line of sight
+// visibility graph over the waypoints: same-layer edges need clear line of
+// sight AND solid ground the whole way (maps with void pits). One-way navLinks
+// (jump-pad flights, platform drop-offs) are appended verbatim.
 func (g *Game) buildNavEdges() {
 	nodes := g.arena.NavNodes
 	g.navEdges = make([][]int, len(nodes))
 	for i, a := range nodes {
 		for j, b := range nodes {
-			if i == j {
+			if i == j || math.Abs(a[1]-b[1]) > 1.2 {
 				continue
 			}
 			d := Vec3{b[0] - a[0], 0, b[2] - a[2]}
 			if math.Hypot(d[0], d[2]) > 26 {
 				continue
 			}
-			t, hit := g.raycastWorld(Vec3{a[0], a[1] + 1.1, a[2]}, d)
-			if !hit || t >= 1 {
-				g.navEdges[i] = append(g.navEdges[i], j)
+			if t, hit := g.raycastWorld(Vec3{a[0], a[1] + 1.1, a[2]}, d); hit && t < 1 {
+				continue
 			}
+			if !g.edgeWalkable(a, b) {
+				continue
+			}
+			g.navEdges[i] = append(g.navEdges[i], j)
 		}
 	}
+	for _, l := range g.arena.NavLinks {
+		i, j := g.nearestNode(l.From), g.nearestNode(l.To)
+		if i != j {
+			g.navEdges[i] = append(g.navEdges[i], j)
+		}
+	}
+}
+
+// every ~1m along the edge there must be ground within a short drop
+func (g *Game) edgeWalkable(a, b Vec3) bool {
+	dist := math.Hypot(b[0]-a[0], b[2]-a[2])
+	steps := int(math.Ceil(dist))
+	for s := 0; s <= steps; s++ {
+		k := float64(s) / math.Max(1, float64(steps))
+		p := Vec3{a[0] + (b[0]-a[0])*k, a[1] + (b[1]-a[1])*k, a[2] + (b[2]-a[2])*k}
+		if _, hit := g.raycastWorld(Vec3{p[0], p[1] + 0.6, p[2]}, Vec3{0, -2.2, 0}); !hit {
+			return false
+		}
+	}
+	return true
 }
 
 func (g *Game) nearestNode(pos Vec3) int {
 	best, bestD := 0, math.Inf(1)
 	for i, n := range g.arena.NavNodes {
-		d := (pos[0]-n[0])*(pos[0]-n[0]) + (pos[2]-n[2])*(pos[2]-n[2])
+		dy := pos[1] - n[1]
+		d := (pos[0]-n[0])*(pos[0]-n[0]) + (pos[2]-n[2])*(pos[2]-n[2]) + dy*dy*6 // stay on your own layer
 		if d < bestD {
 			bestD, best = d, i
 		}
@@ -101,6 +127,19 @@ func (g *Game) stepBots(dt float64) {
 			bot.Vel[2] *= f
 			if math.Hypot(bot.Vel[0], bot.Vel[2]) < 1 {
 				bot.Vel[0], bot.Vel[2] = 0, 0
+			}
+		}
+
+		// jump pads launch bots exactly like humans
+		if bot.Grounded {
+			for _, pad := range g.arena.JumpPads {
+				dx, dz := bot.Pos[0]-pad.P[0], bot.Pos[2]-pad.P[2]
+				if dx*dx+dz*dz < pad.R*pad.R && math.Abs(bot.Pos[1]-pad.P[1]) < 0.6 {
+					bot.Vel = pad.V
+					bot.Grounded = false
+					bot.NodeI = -1 // re-pick a waypoint up top
+					break
+				}
 			}
 		}
 

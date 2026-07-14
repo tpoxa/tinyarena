@@ -5,8 +5,10 @@
 let data;
 if (typeof window === 'undefined') {
   const { readFile } = await import('node:fs/promises');
-  data = JSON.parse(await readFile(new URL('./arena.json', import.meta.url), 'utf8'));
+  const name = process.env.MAP || 'neon-yard';
+  data = JSON.parse(await readFile(new URL(`./maps/${name}.json`, import.meta.url), 'utf8'));
 } else {
+  // the server serves whichever map is active at this path
   data = await (await fetch('/shared/arena.json')).json();
 }
 

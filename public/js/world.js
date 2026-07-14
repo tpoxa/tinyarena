@@ -65,7 +65,7 @@ export class World {
     BOXES.forEach((b, idx) => {
       const geo = new THREE.BoxGeometry(...b.s);
       let mat;
-      if (idx === 0) {
+      if (b.p[1] < 0) { // ground-level slabs get the light-grid, whatever the map
         const tex = gridTex.clone();
         tex.repeat.set(b.s[0] / 4, b.s[2] / 4);
         mat = new THREE.MeshLambertMaterial({ map: tex });

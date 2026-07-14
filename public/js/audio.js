@@ -121,6 +121,9 @@ export class AudioEngine {
           [440, 550, 660, 880].forEach((f, i) =>
             setTimeout(() => this.osc('square', f, f, 0.18, 0.3 * gain), i * 130));
           break;
+        case 'tick':
+          this.osc('square', 990, 990, 0.06, 0.22 * gain);
+          break;
         case 'quad':
           this.osc('sawtooth', 70, 280, 0.55, 0.5 * gain);
           this.osc('sine', 440, 1760, 0.4, 0.22 * gain);

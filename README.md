@@ -13,7 +13,11 @@ go build -o tiny-arena-server . && ./tiny-arena-server
 
 Colleagues on the same network: give them `http://<your-lan-ip>:3377`. That's the whole deployment story.
 
-Env: `PORT` (default 3377), `BOTS` (default 3), `DEV=1` serves `public/` and `shared/` from disk so client edits apply on refresh.
+Env: `PORT` (default 3377), `BOTS` (default 3), `MAP` (`neon-yard` or `circuit`), `MATCH_SECONDS` (default 480), `DEV=1` serves `public/` and `shared/` from disk so client edits apply on refresh.
+
+Two maps ship in the binary. `neon-yard` is the classic yard with side platforms. `circuit` is a ring around a void pit: a mega-health island in the middle reached by two narrow bridges, four corner platforms fed by diagonal jump pads, and a teleporter out of the island when it gets too warm.
+
+![circuit](docs/circuit.png)
 
 ## Play
 
@@ -29,6 +33,8 @@ Pick a body at the join screen — rubber duck, pizza slice, Christmas tree, ret
 - **QUAD DAMAGE** spawns on the east platform every 60 s: 3× damage for 20 s, lost on death, and everyone gets told you have it
 - Fast frags stack DOUBLE / TRIPLE / MULTI / MONSTER KILL; staying alive stacks KILLING SPREE (5), RAMPAGE (8), GODLIKE (12)
 - Death matters: the camera pulls out behind you while your body bursts into cubes that ride the killing blow
+- Matches run on a clock (8 minutes by default): first to 15 frags wins, or the leader when time runs out — either way you get the standings before the next round starts
+- Bots ride the jump pads too, so the high ground is never safe for long
 
 ![death](docs/death.png)
 
@@ -40,9 +46,9 @@ The Go server owns the truth. It runs the simulation at 30 Hz and sends snapshot
 
 - `main.go` — WebSocket plumbing; one goroutine owns all game state, connections talk to it via channels
 - `game.go` — combat, pickups, streaks, quad, snapshots
-- `bots.go` — bots walk a line-of-sight waypoint graph and switch to pure server-side ballistics when a rocket sends them flying
+- `bots.go` — bots walk a line-of-sight waypoint graph (layer-aware, with walkability checks so nobody strolls into a void pit), ride jump pads up to the platforms, and switch to pure server-side ballistics when a rocket sends them flying
 - `arena.go` — map loading + AABB raycasts
-- `shared/arena.json` — the entire map, weapons, and balance in one JSON file read by both Go and JS
+- `shared/maps/*.json` — each map is one JSON file (geometry, weapons, balance, nav graph) read by both Go and JS; the server serves the active one to the browser
 - `public/` — the client: Three.js scene, prediction, HUD, procedural WebAudio sound (zero asset files), and the model factory (`public/js/models.js`)
 
 The player bodies are built from Three.js primitives at runtime; there are no model files in the repo. Sounds work the same way: every effect is synthesized from oscillators and filtered noise. The only vendored dependency is Three.js.
