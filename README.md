@@ -25,6 +25,7 @@ Env: `PORT` (default 3377), `BOTS` (default 3), `MAPS` (rotation order, default 
 
 Two maps ship in the binary, and the server rotates to the next one after every match — clients rebuild the world in place, mid-session, without a page reload. `neon-yard` is the classic yard with side platforms. `circuit` is a ring around a void pit: a mega-health island in the middle reached by two narrow bridges, four corner platforms fed by diagonal jump pads, and a teleporter out of the island when it gets too warm.
 
+![neon-yard](docs/neon-yard.png)
 ![circuit](docs/circuit.png)
 
 ## Play
