@@ -21,12 +21,13 @@ docker run -p 3377:3377 ghcr.io/tpoxa/tinyarena
 
 Colleagues on the same network: give them `http://<your-lan-ip>:3377`. That's the whole deployment story.
 
-Env: `PORT` (default 3377), `BOTS` (default 3), `MAPS` (rotation order, default `neon-yard,circuit`), `MAP` (pin a single map, no rotation), `MATCH_SECONDS` (default 480), `DEV=1` serves `public/` and `shared/` from disk so client edits apply on refresh.
+Env: `PORT` (default 3377), `BOTS` (default 3), `MAPS` (rotation order, default `neon-yard,circuit,vertigo`), `MAP` (pin a single map, no rotation), `MATCH_SECONDS` (default 480), `DEV=1` serves `public/` and `shared/` from disk so client edits apply on refresh.
 
-Two maps ship in the binary, and the server rotates to the next one after every match — clients rebuild the world in place, mid-session, without a page reload. `neon-yard` is the classic yard with side platforms. `circuit` is a ring around a void pit: a mega-health island in the middle reached by two narrow bridges, four corner platforms fed by diagonal jump pads, and a teleporter out of the island when it gets too warm.
+Three maps ship in the binary, and the server rotates to the next one after every match — clients rebuild the world in place, mid-session, without a page reload. `neon-yard` is the classic yard with side platforms. `circuit` is a ring around a void pit: a mega-health island reached by two narrow bridges, four corner platforms fed by diagonal jump pads, and a teleporter out when the island gets too warm. `vertigo` goes up instead of out: four corner platforms around a high central tower, pad chains to climb, and the quad at the very top for whoever dares to hold it.
 
 ![neon-yard](docs/neon-yard.png)
 ![circuit](docs/circuit.png)
+![vertigo](docs/vertigo.png)
 
 ## Play
 
