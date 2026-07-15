@@ -2,6 +2,8 @@
 
 Quake-style browser deathmatch in one 10 MB Go binary. The server, the bots, and the whole Tron-flavored Three.js client are baked into a single executable, so there is nothing to build and nothing for players to install.
 
+**Play it live: [tinyarena.online](https://tinyarena.online)** — the bots are waiting.
+
 ![arena](docs/arena.png)
 
 ## Run
