@@ -70,7 +70,7 @@ func main() {
 		game.matchEndsAt = nowSec() + game.matchSeconds
 	}
 	for i := 0; i < botCount; i++ {
-		game.makePlayer(fmt.Sprintf("%s-BOT", botNames[i%len(botNames)]), true, nil)
+		game.makePlayer("", true, nil)
 	}
 
 	msgCh := make(chan inbound, 256)

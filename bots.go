@@ -5,8 +5,6 @@ import (
 	"math/rand"
 )
 
-var botNames = []string{"CRASH", "ORBB", "SARGE", "MYNX", "BITTERMAN", "PHOBOS"}
-
 var botHalf = Vec3{0.4, 0.9, 0.4}
 
 // visibility graph over the waypoints: same-layer edges need clear line of

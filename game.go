@@ -29,6 +29,14 @@ var modelIDs = []string{
 	"ghost", "donut", "crt", "snowman", "burger", "floppy", "robotvac",
 }
 
+// bot handles match their bodies — the duck is QUACKERS, not SARGE
+var botHandles = map[string]string{
+	"trooper": "ROOKIE", "duck": "QUACKERS", "tree": "TINSEL", "pizza": "SLICE",
+	"mug": "DECAF", "cactus": "SPIKE", "cone": "PYLON", "penguin": "WADDLES",
+	"ghost": "BOO", "donut": "SPRINKLES", "crt": "CRT-86", "snowman": "FROSTY",
+	"burger": "PATTY", "floppy": "SAVEPOINT", "robotvac": "DUSTER",
+}
+
 func validModel(id string) bool {
 	for _, m := range modelIDs {
 		if m == id {
@@ -139,12 +147,25 @@ func copyAmmo(m map[string]int) map[string]int {
 	return out
 }
 
+func (g *Game) nameTaken(name string) bool {
+	for _, p := range g.players {
+		if p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *Game) makePlayer(name string, bot bool, conn *Conn) *Player {
 	id := g.nextID
 	g.nextID++
 	model := "trooper"
 	if bot {
 		model = modelIDs[rand.Intn(len(modelIDs))] // bots dress however they like
+		name = botHandles[model]
+		for n := 2; g.nameTaken(name); n++ {
+			name = fmt.Sprintf("%s.%d", botHandles[model], n)
+		}
 	}
 	p := &Player{
 		ID: id, Name: name, Bot: bot, Conn: conn,
@@ -188,27 +209,7 @@ func (g *Game) addBot(by *Player) {
 		g.send(by, map[string]any{"t": "note", "msg": "BOT LIMIT REACHED"})
 		return
 	}
-	taken := map[string]bool{}
-	for _, p := range g.players {
-		taken[p.Name] = true
-	}
-	name := ""
-	for _, base := range botNames {
-		if cand := base + "-BOT"; !taken[cand] {
-			name = cand
-			break
-		}
-	}
-	if name == "" { // all six names in play — suffix a random one
-		base := botNames[rand.Intn(len(botNames))] + "-BOT"
-		for n := 2; ; n++ {
-			if cand := fmt.Sprintf("%s.%d", base, n); !taken[cand] {
-				name = cand
-				break
-			}
-		}
-	}
-	bot := g.makePlayer(name, true, nil)
+	bot := g.makePlayer("", true, nil)
 	g.broadcast(map[string]any{"t": "pjoin", "player": publicInfo(bot)}, 0)
 	log.Printf("+ %s added by %s (%d bots)", bot.Name, by.Name, g.botCount())
 }
