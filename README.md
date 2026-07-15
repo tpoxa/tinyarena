@@ -1,8 +1,8 @@
 # TINY ARENA
 
-Quake-style browser deathmatch in one 10 MB Go binary. The server, the bots, and the whole Tron-flavored Three.js client are baked into a single executable, so there is nothing to build and nothing for players to install.
+Quake-style team deathmatch in your browser, in one 10 MB Go binary. BLUE versus GREEN, forever. The server, the bots, and the whole Tron-flavored Three.js client are baked into a single executable, so there is nothing to build and nothing for players to install.
 
-**Play it live: [tinyarena.online](https://tinyarena.online)** — the bots are waiting.
+**Play it live: [tinyarena.online](https://tinyarena.online)** — the bots are already fighting; they don't wait for you.
 
 ![arena](docs/arena.png)
 
@@ -21,9 +21,9 @@ docker run -p 3377:3377 ghcr.io/tpoxa/tinyarena
 
 Colleagues on the same network: give them `http://<your-lan-ip>:3377`. That's the whole deployment story.
 
-Env: `PORT` (default 3377), `BOTS` (default 3), `MAP` (`neon-yard` or `circuit`), `MATCH_SECONDS` (default 480), `DEV=1` serves `public/` and `shared/` from disk so client edits apply on refresh.
+Env: `PORT` (default 3377), `BOTS` (default 3), `MAPS` (rotation order, default `neon-yard,circuit`), `MAP` (pin a single map, no rotation), `MATCH_SECONDS` (default 480), `DEV=1` serves `public/` and `shared/` from disk so client edits apply on refresh.
 
-Two maps ship in the binary. `neon-yard` is the classic yard with side platforms. `circuit` is a ring around a void pit: a mega-health island in the middle reached by two narrow bridges, four corner platforms fed by diagonal jump pads, and a teleporter out of the island when it gets too warm.
+Two maps ship in the binary, and the server rotates to the next one after every match — clients rebuild the world in place, mid-session, without a page reload. `neon-yard` is the classic yard with side platforms. `circuit` is a ring around a void pit: a mega-health island in the middle reached by two narrow bridges, four corner platforms fed by diagonal jump pads, and a teleporter out of the island when it gets too warm.
 
 ![circuit](docs/circuit.png)
 
@@ -57,7 +57,7 @@ Aim at someone to see their name. Yours is on the HUD.
 The Go server owns the truth. It runs the simulation at 30 Hz and sends snapshots at 20 Hz, all as plain JSON WebSocket messages you can read with `wscat`. Movement is client-predicted (Quake-style ground friction, air control, bunny-hop), but every shot is validated and resolved server-side: hitscan and rockets ray-march against player spheres and the map's AABBs, so a laggy client can't invent hits. Remote players render about 120 ms in the past and interpolate between snapshots.
 
 - `main.go` — WebSocket plumbing; one goroutine owns all game state, connections talk to it via channels
-- `game.go` — combat, pickups, streaks, quad, snapshots
+- `game.go` — teams, combat, pickups, streaks, quad, the match clock, map rotation, snapshots
 - `bots.go` — bots walk a line-of-sight waypoint graph (layer-aware, with walkability checks so nobody strolls into a void pit), ride jump pads up to the platforms, and switch to pure server-side ballistics when a rocket sends them flying
 - `arena.go` — map loading + AABB raycasts
 - `shared/maps/*.json` — each map is one JSON file (geometry, weapons, balance, nav graph) read by both Go and JS; the server serves the active one to the browser
