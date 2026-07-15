@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -57,17 +58,28 @@ func envInt(key string, def int) int {
 func main() {
 	port := envInt("PORT", 3377)
 	botCount := envInt("BOTS", 3)
-	mapName := os.Getenv("MAP")
-	if mapName == "" {
-		mapName = "neon-yard"
+
+	// MAP pins a single map (no rotation); MAPS sets the rotation order
+	rotation := []string{"neon-yard", "circuit"}
+	if m := os.Getenv("MAP"); m != "" {
+		rotation = []string{m}
+	} else if m := os.Getenv("MAPS"); m != "" {
+		rotation = strings.Split(m, ",")
 	}
 
-	arena, arenaRaw := loadArena(mapName)
+	arena, arenaRaw := loadArena(rotation[0])
 	game := newGame(arena)
-	game.mapName = mapName
+	game.mapRotation = rotation
+	game.mapName = rotation[0]
+	game.mapNameLive.Store(rotation[0])
+	game.arenaRaw.Store(arenaRaw)
 	if s := envInt("MATCH_SECONDS", 0); s > 0 {
 		game.matchSeconds = float64(s)
 		game.matchEndsAt = nowSec() + game.matchSeconds
+	}
+	if s := envInt("BOT_CHURN_SECONDS", 0); s > 0 {
+		game.churnBase = float64(s)
+		game.churnAt = nowSec() + game.churnBase
 	}
 	for i := 0; i < botCount; i++ {
 		game.makePlayer("", true, nil)
@@ -121,9 +133,9 @@ func main() {
 	mux := http.NewServeMux()
 	// the active map is always served at the path the client fetches
 	mux.HandleFunc("/shared/arena.json", func(w http.ResponseWriter, _ *http.Request) {
-		raw := arenaRaw
+		raw := game.arenaRaw.Load().([]byte)
 		if os.Getenv("DEV") == "1" { // live map data on refresh, like the other shared files
-			if b, err := os.ReadFile("shared/maps/" + mapName + ".json"); err == nil {
+			if b, err := os.ReadFile("shared/maps/" + game.mapNameLive.Load().(string) + ".json"); err == nil {
 				raw = b
 			}
 		}
@@ -133,7 +145,9 @@ func main() {
 	mux.Handle("/shared/", http.StripPrefix("/shared/", http.FileServer(http.FS(sharedFS))))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"ok":true,"humans":%d}`, game.humans.Load())
+		fmt.Fprintf(w, `{"ok":true,"humans":%d,"map":%q,"teams":{"blue":%d,"green":%d}}`,
+			game.humans.Load(), game.mapNameLive.Load().(string),
+			game.teamCounts[0].Load(), game.teamCounts[1].Load())
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if websocket.IsWebSocketUpgrade(r) {
@@ -158,6 +172,6 @@ func main() {
 		files.ServeHTTP(w, r)
 	})
 
-	log.Printf("TINY ARENA (go) up on http://localhost:%d  (map: %s, bots: %d)", port, mapName, botCount)
+	log.Printf("TINY ARENA (go) up on http://localhost:%d  (maps: %s, bots: %d)", port, strings.Join(rotation, "→"), botCount)
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), mux))
 }

@@ -19,7 +19,9 @@ const (
 	maxBots      = 8
 )
 
-var colors = []string{"#5b6cff", "#27e0ff", "#ff3df0", "#ff9a3d", "#7dff3d", "#ff4b4b", "#ffe83d", "#3dffc8"}
+// everything is team deathmatch: blue vs green, colors ARE the team
+var teamNames = []string{"BLUE", "GREEN"}
+var teamColors = []string{"#5b6cff", "#7dff3d"}
 var nameRe = regexp.MustCompile(`[^\w\-. ]`)
 var debugCombat = os.Getenv("DEBUG") == "1"
 
@@ -51,6 +53,7 @@ type Player struct {
 	Name   string
 	Color  string
 	Model  string
+	Team   int // 0 blue, 1 green
 	Bot    bool
 	Conn   *Conn
 	Pos    Vec3
@@ -105,7 +108,13 @@ type PickupState struct {
 
 type Game struct {
 	arena            *Arena
+	arenaRaw         atomic.Value // []byte — served at /shared/arena.json
+	mapNameLive      atomic.Value // string — read by HTTP handlers
+	mapRotation      []string
+	mapIdx           int
 	mapName          string
+	teamScore        [2]int
+	teamCounts       [2]atomic.Int64 // read by /healthz outside the game goroutine
 	players          map[int]*Player
 	rockets          map[int]*Rocket
 	pickups          map[string]*PickupState
@@ -116,6 +125,8 @@ type Game struct {
 	matchSeconds     float64
 	matchEndsAt      float64
 	resetAt          float64
+	churnAt          float64 // next bot swap — fresh faces keep the arena alive
+	churnBase        float64
 	humans           atomic.Int64 // read by /healthz outside the game goroutine
 }
 
@@ -135,8 +146,31 @@ func newGame(arena *Arena) *Game {
 	}
 	g.matchSeconds = arena.MatchSeconds
 	g.matchEndsAt = nowSec() + g.matchSeconds
+	g.churnBase = 180
+	g.churnAt = nowSec() + g.churnBase*(0.7+rand.Float64()*0.6)
 	g.buildNavEdges()
 	return g
+}
+
+// swap one random bot for a fresh face (new body, new name, smaller team)
+func (g *Game) churnBot() {
+	var bots []*Player
+	for _, p := range g.players {
+		if p.Bot {
+			bots = append(bots, p)
+		}
+	}
+	if len(bots) == 0 {
+		return
+	}
+	old := bots[rand.Intn(len(bots))]
+	delete(g.players, old.ID)
+	g.syncTeamCounts()
+	g.broadcast(map[string]any{"t": "pleave", "id": old.ID}, 0)
+	g.broadcast(map[string]any{"t": "note", "msg": old.Name + " WANDERED OFF"}, 0)
+	nb := g.makePlayer("", true, nil)
+	g.broadcast(map[string]any{"t": "pjoin", "player": publicInfo(nb)}, 0)
+	log.Printf("~ %s wandered off, %s joined", old.Name, nb.Name)
 }
 
 func copyAmmo(m map[string]int) map[string]int {
@@ -156,6 +190,28 @@ func (g *Game) nameTaken(name string) bool {
 	return false
 }
 
+func (g *Game) teamSize(t int) int {
+	n := 0
+	for _, p := range g.players {
+		if p.Team == t {
+			n++
+		}
+	}
+	return n
+}
+
+func (g *Game) smallerTeam() int {
+	if g.teamSize(1) < g.teamSize(0) {
+		return 1
+	}
+	return 0
+}
+
+func (g *Game) syncTeamCounts() {
+	g.teamCounts[0].Store(int64(g.teamSize(0)))
+	g.teamCounts[1].Store(int64(g.teamSize(1)))
+}
+
 func (g *Game) makePlayer(name string, bot bool, conn *Conn) *Player {
 	id := g.nextID
 	g.nextID++
@@ -167,10 +223,12 @@ func (g *Game) makePlayer(name string, bot bool, conn *Conn) *Player {
 			name = fmt.Sprintf("%s.%d", botHandles[model], n)
 		}
 	}
+	team := g.smallerTeam()
 	p := &Player{
 		ID: id, Name: name, Bot: bot, Conn: conn,
 		Model:     model,
-		Color:     colors[id%len(colors)],
+		Team:      team,
+		Color:     teamColors[team],
 		Pos:       Vec3{0, 0.2, 0},
 		HP:        g.arena.MaxHP,
 		Ammo:      copyAmmo(g.arena.StartAmmo),
@@ -181,6 +239,7 @@ func (g *Game) makePlayer(name string, bot bool, conn *Conn) *Player {
 		NodeI:     -1, PrevI: -1,
 	}
 	g.players[id] = p
+	g.syncTeamCounts()
 	return p
 }
 
@@ -226,6 +285,7 @@ func (g *Game) kickBot(by *Player) {
 		return
 	}
 	delete(g.players, victim.ID)
+	g.syncTeamCounts()
 	g.broadcast(map[string]any{"t": "pleave", "id": victim.ID}, 0)
 	g.broadcast(map[string]any{"t": "note", "msg": fmt.Sprintf("%s KICKED %s", by.Name, victim.Name)}, 0)
 	log.Printf("- %s kicked by %s (%d bots)", victim.Name, by.Name, g.botCount())
@@ -259,7 +319,7 @@ func (g *Game) broadcast(msg any, exceptID int) {
 
 func publicInfo(p *Player) map[string]any {
 	return map[string]any{
-		"id": p.ID, "name": p.Name, "color": p.Color, "bot": p.Bot, "model": p.Model,
+		"id": p.ID, "name": p.Name, "color": p.Color, "bot": p.Bot, "model": p.Model, "team": p.Team,
 		"frags": p.Frags, "deaths": p.Deaths, "dead": p.Dead,
 	}
 }
@@ -333,6 +393,10 @@ func (g *Game) applyDamage(target *Player, dmg int, attacker *Player, weaponID i
 			knock[1] *= 1.4
 			knock[2] *= 1.4
 		}
+	}
+	// friendly fire hurts, but half as much (knockback stays — team rocket boosts!)
+	if attacker != nil && attacker.ID != target.ID && attacker.Team == target.Team {
+		dmg = (dmg + 1) / 2
 	}
 	remaining := dmg
 	if target.Armor > 0 {
@@ -417,14 +481,25 @@ func (g *Game) kill(victim, attacker *Player, weaponID int) {
 	victim.QuadUntil = 0 // quad dies with you
 	victim.RespawnAt = t + g.arena.RespawnSeconds
 	suicide := attacker == nil || attacker.ID == victim.ID
+	teamkill := !suicide && attacker.Team == victim.Team
 	killerID := victim.ID
 	if suicide {
 		if victim.Frags > 0 {
 			victim.Frags--
 		}
+	} else if teamkill {
+		// costs you a frag and your team a point — no streaks for treason
+		killerID = attacker.ID
+		if attacker.Frags > 0 {
+			attacker.Frags--
+		}
+		if g.teamScore[attacker.Team] > 0 {
+			g.teamScore[attacker.Team]--
+		}
 	} else {
 		attacker.Frags++
 		killerID = attacker.ID
+		g.teamScore[attacker.Team]++
 		attacker.Streak++
 		if t-attacker.LastFragAt <= 3 {
 			attacker.MultiN++
@@ -438,7 +513,7 @@ func (g *Game) kill(victim, attacker *Player, weaponID int) {
 		kv = victim.LastKnock // fresh impulse — let the client blast the corpse along it
 	}
 	g.broadcast(map[string]any{"t": "die", "victim": victim.ID, "killer": killerID, "w": weaponID, "kv": kv}, 0)
-	if !suicide {
+	if !suicide && !teamkill {
 		if lbl := multiLabel(attacker.MultiN); lbl != "" {
 			g.broadcast(map[string]any{"t": "streak", "id": attacker.ID, "name": attacker.Name, "n": attacker.MultiN, "label": lbl}, 0)
 		}
@@ -446,15 +521,48 @@ func (g *Game) kill(victim, attacker *Player, weaponID int) {
 			g.broadcast(map[string]any{"t": "streak", "id": attacker.ID, "name": attacker.Name, "n": attacker.Streak, "label": lbl, "spree": true}, 0)
 		}
 	}
-	if !suicide && attacker.Frags >= g.arena.FragLimit && nowSec() >= g.matchLockedUntil {
-		g.broadcast(map[string]any{"t": "win", "id": attacker.ID, "name": attacker.Name, "frags": attacker.Frags}, 0)
-		g.matchLockedUntil = nowSec() + 6
-		g.resetAt = g.matchLockedUntil
+	if !suicide && !teamkill && g.teamScore[attacker.Team] >= g.arena.FragLimit && nowSec() >= g.matchLockedUntil {
+		g.winTeam(attacker.Team, false)
 	}
 }
 
+func (g *Game) winTeam(team int, timeup bool) {
+	name, frags := "NOBODY", g.teamScore[0] // dead-even timer — a draw
+	if team >= 0 {
+		name, frags = teamNames[team]+" TEAM", g.teamScore[team]
+	}
+	g.broadcast(map[string]any{"t": "win", "team": team, "name": name, "frags": frags, "timeup": timeup}, 0)
+	g.matchLockedUntil = nowSec() + 6
+	g.resetAt = g.matchLockedUntil
+}
+
+// swap in the next map from the rotation: new arena, nav graph, pickups.
+// Clients get a "map" broadcast and rebuild their world in place.
+func (g *Game) rotateMap() {
+	if len(g.mapRotation) < 2 {
+		return
+	}
+	g.mapIdx = (g.mapIdx + 1) % len(g.mapRotation)
+	g.mapName = g.mapRotation[g.mapIdx]
+	g.mapNameLive.Store(g.mapName)
+	arena, raw := loadArena(g.mapName)
+	g.arena = arena
+	g.arenaRaw.Store(raw)
+	g.pickups = map[string]*PickupState{}
+	for _, spec := range arena.Pickups {
+		g.pickups[spec.ID] = &PickupState{Spec: spec, Active: true}
+	}
+	g.rockets = map[int]*Rocket{}
+	g.buildNavEdges()
+	g.matchSeconds = arena.MatchSeconds
+	g.broadcast(map[string]any{"t": "map", "name": g.mapName}, 0)
+	log.Printf("~ map rotated to %s", g.mapName)
+}
+
 func (g *Game) resetMatch() {
+	g.rotateMap()
 	g.matchEndsAt = nowSec() + g.matchSeconds
+	g.teamScore = [2]int{}
 	for _, p := range g.players {
 		p.Frags, p.Deaths = 0, 0
 		p.Streak, p.MultiN, p.QuadUntil = 0, 0, 0
@@ -772,18 +880,19 @@ func (g *Game) tick(dt float64) {
 	g.stepBots(dt)
 	g.stepRockets(dt)
 	g.stepPickups()
+	if t >= g.churnAt {
+		g.churnAt = t + g.churnBase*(0.7+rand.Float64()*0.6)
+		g.churnBot()
+	}
 	if g.resetAt == 0 && t >= g.matchEndsAt && t >= g.matchLockedUntil {
-		var leader *Player
-		for _, p := range g.players {
-			if leader == nil || p.Frags > leader.Frags {
-				leader = p
-			}
+		switch {
+		case g.teamScore[0] > g.teamScore[1]:
+			g.winTeam(0, true)
+		case g.teamScore[1] > g.teamScore[0]:
+			g.winTeam(1, true)
+		default:
+			g.winTeam(-1, true) // draw
 		}
-		if leader != nil {
-			g.broadcast(map[string]any{"t": "win", "id": leader.ID, "name": leader.Name, "frags": leader.Frags, "timeup": true}, 0)
-		}
-		g.matchLockedUntil = t + 6
-		g.resetAt = g.matchLockedUntil
 	}
 	if g.resetAt > 0 && t >= g.resetAt {
 		g.resetAt = 0
@@ -844,6 +953,7 @@ func (g *Game) sendSnapshots() {
 		}
 		g.send(p, map[string]any{
 			"t": "snap", "ts": ts, "tl": int(math.Ceil(math.Max(0, g.matchEndsAt-t))),
+			"score":   []int{g.teamScore[0], g.teamScore[1]},
 			"players": players,
 			"rockets": rockets,
 			"you":     map[string]any{"hp": p.HP, "ar": p.Armor, "ammo": p.Ammo, "quad": round2(math.Max(0, p.QuadUntil-t))},
@@ -857,6 +967,7 @@ type inMsg struct {
 	T     string          `json:"t"`
 	Name  string          `json:"name"`
 	Model string          `json:"model"`
+	Team  string          `json:"team"`
 	P     []float64       `json:"p"`
 	Yw    *float64        `json:"yw"`
 	Pt    *float64        `json:"pt"`
@@ -896,6 +1007,14 @@ func (g *Game) handleMessage(c *Conn, data []byte) {
 		if validModel(msg.Model) {
 			me.Model = msg.Model
 		}
+		if msg.Team == "blue" || msg.Team == "green" {
+			me.Team = 0
+			if msg.Team == "green" {
+				me.Team = 1
+			}
+			me.Color = teamColors[me.Team]
+			g.syncTeamCounts()
+		}
 		c.player = me
 		infos := make([]map[string]any, 0, len(g.players))
 		for _, p := range g.players {
@@ -906,7 +1025,7 @@ func (g *Game) handleMessage(c *Conn, data []byte) {
 			pks = append(pks, map[string]any{"id": id, "active": g.pickups[id].Active})
 		}
 		g.send(me, map[string]any{
-			"t": "welcome", "id": me.ID, "color": me.Color, "name": me.Name, "map": g.mapName,
+			"t": "welcome", "id": me.ID, "color": me.Color, "name": me.Name, "team": me.Team, "map": g.mapName,
 			"players": infos, "pickups": pks, "fragLimit": g.arena.FragLimit,
 		})
 		g.broadcast(map[string]any{"t": "pjoin", "player": publicInfo(me)}, me.ID)
@@ -953,6 +1072,7 @@ func (g *Game) dropConn(c *Conn) {
 	}
 	delete(g.players, c.player.ID)
 	g.broadcast(map[string]any{"t": "pleave", "id": c.player.ID}, 0)
+	g.syncTeamCounts()
 	g.humans.Store(int64(g.humanCount()))
 	log.Printf("- %s left", c.player.Name)
 	c.player = nil

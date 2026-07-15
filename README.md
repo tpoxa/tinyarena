@@ -29,7 +29,9 @@ Two maps ship in the binary. `neon-yard` is the classic yard with side platforms
 
 ## Play
 
-Pick a body at the join screen — rubber duck, pizza slice, Christmas tree, retro PC, and eleven more low-poly desk heroes. Bots pick their own.
+It's always team deathmatch: BLUE versus GREEN. Pick your side at the join screen (live player counts included) and pick a body — rubber duck, pizza slice, Christmas tree, retro PC, and eleven more low-poly desk heroes. Bots fill in on whichever team is smaller, they never shoot their own, and every few minutes one wanders off and a new face joins.
+
+![scoreboard](docs/teams.png)
 
 ![join](docs/join.png)
 ![cast](docs/cast.png)
@@ -41,7 +43,8 @@ Pick a body at the join screen — rubber duck, pizza slice, Christmas tree, ret
 - **QUAD DAMAGE** spawns on the east platform every 60 s: 3× damage for 20 s, lost on death, and everyone gets told you have it
 - Fast frags stack DOUBLE / TRIPLE / MULTI / MONSTER KILL; staying alive stacks KILLING SPREE (5), RAMPAGE (8), GODLIKE (12)
 - Death matters: the camera pulls out behind you while your body bursts into cubes that ride the killing blow
-- Matches run on a clock (8 minutes by default): first to 15 frags wins, or the leader when time runs out — either way you get the standings before the next round starts
+- Matches run on a clock (8 minutes by default): first team to 25 points wins, or the leading team when time runs out — you get the standings before the next round, and the map rotates every match, humans present or not
+- Friendly fire is on at half damage. A teamkill costs you a frag and your team a point, so aim your rockets with love
 - Bots ride the jump pads too, so the high ground is never safe for long
 - Bots are named after their bodies: when QUACKERS rockets you off the map, that was the rubber duck. Watch out for FROSTY, SLICE, BOO, DUSTER, and the rest of the cast
 

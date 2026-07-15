@@ -7,6 +7,8 @@ import { BOXES, JUMP_PADS, TELEPORTERS, PICKUPS } from '/shared/map.js';
 export class World {
   constructor(scene) {
     this.scene = scene;
+    this.root = new THREE.Group(); // everything world-owned — swapped on map change
+    scene.add(this.root);
     this.time = 0;
     this.pads = [];
     this.pickupMeshes = new Map();
@@ -26,13 +28,13 @@ export class World {
   }
 
   buildLights() {
-    this.scene.add(new THREE.HemisphereLight(0x4a55c0, 0x0a0714, 1.35));
+    this.root.add(new THREE.HemisphereLight(0x4a55c0, 0x0a0714, 1.35));
     const dir = new THREE.DirectionalLight(0xaab4ff, 1.1);
     dir.position.set(18, 40, 12);
-    this.scene.add(dir);
+    this.root.add(dir);
     const fill = new THREE.PointLight(0x27e0ff, 60, 40);
     fill.position.set(0, 10, 0);
-    this.scene.add(fill);
+    this.root.add(fill);
   }
 
   gridTexture() {
@@ -74,7 +76,7 @@ export class World {
       }
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(...b.p);
-      this.scene.add(mesh);
+      this.root.add(mesh);
 
       const edgeMat = new THREE.LineBasicMaterial({
         color: b.e, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false,
@@ -82,7 +84,7 @@ export class World {
       const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
       edges.position.copy(mesh.position);
       edges.scale.setScalar(1.002); // sit just off the faces — no z-fighting
-      this.scene.add(edges);
+      this.root.add(edges);
       this.edgeMats.push({ mat: edgeMat, phase: idx * 0.9 });
 
       // tall slim boxes are the corner pillars — give them recognizer sky-beams
@@ -93,7 +95,7 @@ export class World {
         });
         const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.7, 70, 12, 1, true), beamMat);
         beam.position.set(b.p[0], b.p[1] + b.s[1] / 2 + 35, b.p[2]);
-        this.scene.add(beam);
+        this.root.add(beam);
         this.beamMats.push({ mat: beamMat, base: 0.05, phase: idx });
       }
     });
@@ -106,7 +108,7 @@ export class World {
         new THREE.MeshBasicMaterial({ color: 0x27e0ff, transparent: true, opacity: 0.85 }),
       );
       disc.position.set(pad.p[0], pad.p[1] + 0.08, pad.p[2]);
-      this.scene.add(disc);
+      this.root.add(disc);
 
       const ring = new THREE.Mesh(
         new THREE.TorusGeometry(pad.r, 0.06, 8, 32),
@@ -114,7 +116,7 @@ export class World {
       );
       ring.rotation.x = Math.PI / 2;
       ring.position.copy(disc.position);
-      this.scene.add(ring);
+      this.root.add(ring);
       this.pads.push({ disc, ring, base: disc.position.y });
 
       // launch column: soft light shaft rising off the pad
@@ -124,7 +126,7 @@ export class World {
       });
       const col = new THREE.Mesh(new THREE.CylinderGeometry(pad.r * 0.8, pad.r, 5.5, 18, 1, true), colMat);
       col.position.set(pad.p[0], pad.p[1] + 2.8, pad.p[2]);
-      this.scene.add(col);
+      this.root.add(col);
       this.beamMats.push({ mat: colMat, base: 0.07, phase: pad.p[0] + pad.p[2] });
     }
   }
@@ -137,14 +139,14 @@ export class World {
       );
       ring.rotation.x = Math.PI / 2;
       ring.position.set(tp.p[0], tp.p[1] + 0.12, tp.p[2]);
-      this.scene.add(ring);
+      this.root.add(ring);
 
       const beam = new THREE.Mesh(
         new THREE.CylinderGeometry(tp.r * 0.7, tp.r * 0.7, 3.2, 20, 1, true),
         new THREE.MeshBasicMaterial({ color: 0xff3df0, transparent: true, opacity: 0.16, side: THREE.DoubleSide }),
       );
       beam.position.set(tp.p[0], tp.p[1] + 1.7, tp.p[2]);
-      this.scene.add(beam);
+      this.root.add(beam);
       this.pads.push({ disc: ring, ring: beam, base: ring.position.y, tp: true });
     }
   }
@@ -202,7 +204,7 @@ export class World {
     for (const pk of PICKUPS) {
       const mesh = this.pickupMesh(pk.type);
       mesh.position.set(...pk.p);
-      this.scene.add(mesh);
+      this.root.add(mesh);
       this.pickupMeshes.set(pk.id, { mesh, base: pk.p[1], active: true });
     }
   }
@@ -223,7 +225,7 @@ export class World {
       m.depthWrite = false;
       m.fog = false;
     }
-    this.scene.add(grid);
+    this.root.add(grid);
   }
 
   buildSky() {
@@ -242,7 +244,7 @@ export class World {
     const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
       color: 0x9ba8ff, size: 0.7, sizeAttenuation: false, transparent: true, opacity: 0.8,
     }));
-    this.scene.add(stars);
+    this.root.add(stars);
   }
 
   update(dt) {
@@ -270,5 +272,14 @@ export class World {
     for (const b of this.beamMats) {
       b.mat.opacity = b.base * (1 + Math.sin(this.time * 2.1 + b.phase) * 0.45);
     }
+  }
+
+  dispose() {
+    this.scene.remove(this.root);
+    this.root.traverse((o) => {
+      o.geometry?.dispose?.();
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) { m?.map?.dispose?.(); m?.dispose?.(); }
+    });
   }
 }

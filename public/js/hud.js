@@ -30,6 +30,8 @@ export class Hud {
     this.quadHud = $('quad-hud');
     this.quadSecs = $('quad-secs');
     this.clockEl = $('match-clock');
+    this.tsBlue = $('ts-blue');
+    this.tsGreen = $('ts-green');
     this.statHp = document.querySelector('.stat-hp');
     this.slots = [...document.querySelectorAll('.wslot')];
     this.respawnAt = 0;
@@ -69,6 +71,11 @@ export class Hud {
     this.centerMsg.classList.remove('show');
     void this.centerMsg.offsetWidth;
     this.centerMsg.classList.add('show');
+  }
+
+  setTeamScore(blue, green) {
+    this.tsBlue.textContent = blue;
+    this.tsGreen.textContent = green;
   }
 
   setClock(secs) {
@@ -129,8 +136,9 @@ export class Hud {
 
   hideDeath() { this.deathOverlay.classList.add('hidden'); }
 
-  showWin(name, timeup = false) {
+  showWin(name, timeup = false, color = null) {
     this.winMsg.textContent = timeup ? `TIME UP — ${name.toUpperCase()} WINS` : `${name.toUpperCase()} WINS`;
+    this.winMsg.style.color = color ?? '';
     this.winOverlay.classList.remove('hidden');
     this.setScoreboardVisible(true); // end-of-round standings
   }
@@ -140,14 +148,27 @@ export class Hud {
   setScoreboardVisible(v) { this.scoreboard.classList.toggle('hidden', !v); }
 
   updateScoreboard(list, myId) {
-    const sorted = [...list].sort((a, b) => b.frags - a.frags || a.deaths - b.deaths);
-    this.sbBody.innerHTML = sorted.map((p) => `
-      <tr class="${p.id === myId ? 'me' : ''}">
-        <td><span class="dot" style="background:${p.color}"></span></td>
-        <td>${p.name}${p.bot ? '<span class="bot-tag">BOT</span>' : ''}</td>
-        <td class="num">${p.frags}</td>
-        <td class="num">${p.deaths}</td>
-      </tr>`).join('');
+    const teamMeta = [
+      { name: 'BLUE', cls: 'sb-team-blue' },
+      { name: 'GREEN', cls: 'sb-team-green' },
+    ];
+    this.sbBody.innerHTML = [0, 1].map((t) => {
+      const members = list.filter((p) => (p.team ?? 0) === t)
+        .sort((a, b) => b.frags - a.frags || a.deaths - b.deaths);
+      const total = members.reduce((s, p) => s + p.frags, 0);
+      const header = `
+        <tr class="sb-team ${teamMeta[t].cls}">
+          <td></td><td>${teamMeta[t].name} TEAM</td>
+          <td class="num">${total}</td><td class="num"></td>
+        </tr>`;
+      return header + members.map((p) => `
+        <tr class="${p.id === myId ? 'me' : ''}">
+          <td><span class="dot" style="background:${p.color}"></span></td>
+          <td>${p.name}${p.bot ? '<span class="bot-tag">BOT</span>' : ''}</td>
+          <td class="num">${p.frags}</td>
+          <td class="num">${p.deaths}</td>
+        </tr>`).join('');
+    }).join('');
   }
 
   setMeta(ping, fps) {

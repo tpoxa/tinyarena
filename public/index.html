@@ -23,11 +23,15 @@
         <span class="join-logo-tiny">TINY</span>
         <span class="join-logo-arena">ARENA</span>
       </div>
-      <div class="join-sub">// BROWSER DEATHMATCH · FRAG LIMIT 15</div>
+      <div class="join-sub">// TEAM DEATHMATCH · BLUE VS GREEN</div>
       <form id="join-form" autocomplete="off">
         <input id="join-name" type="text" maxlength="14" placeholder="CALLSIGN" spellcheck="false" />
         <button id="join-btn" type="submit">ENTER ARENA</button>
       </form>
+      <div class="team-pick">
+        <button id="team-blue" class="team-btn team-blue" type="button">BLUE <span id="team-blue-n">·</span></button>
+        <button id="team-green" class="team-btn team-green" type="button">GREEN <span id="team-green-n">·</span></button>
+      </div>
       <div class="model-pick">
         <button id="model-prev" class="mp-btn" type="button" aria-label="previous body">◀</button>
         <div class="mp-stage">
@@ -54,6 +58,9 @@
     <div id="hitmarker" class="hitmarker"><i></i><i></i><i></i><i></i></div>
     <div id="dmg-vignette" class="dmg-vignette"></div>
     <div id="match-clock" class="match-clock">–:––</div>
+    <div id="team-score" class="team-score">
+      <span id="ts-blue" class="ts-blue">0</span><span class="ts-sep">—</span><span id="ts-green" class="ts-green">0</span>
+    </div>
     <div id="killfeed" class="killfeed"></div>
     <div id="center-msg" class="center-msg"></div>
     <div id="pickup-msg" class="pickup-msg"></div>

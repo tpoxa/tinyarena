@@ -452,3 +452,50 @@ body.quad-active .quad-vignette { opacity: 1; }
   color: var(--hot); border-color: rgba(255, 75, 46, 0.6);
   animation: blink 1s steps(2) infinite;
 }
+
+/* ------------------------------------------------ teams */
+
+.team-pick {
+  margin-top: 22px;
+  display: flex; gap: 14px; justify-content: center;
+}
+
+.team-btn {
+  padding: 12px 26px; cursor: pointer;
+  background: rgba(12, 14, 30, 0.9);
+  border: 1px solid rgba(107, 112, 163, 0.35);
+  color: var(--dim);
+  font-family: var(--display); font-size: 14px; letter-spacing: 0.14em;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  transition: border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.team-btn span { margin-left: 8px; opacity: 0.75; }
+
+.team-btn.team-blue.active {
+  color: var(--indigo); border-color: var(--indigo);
+  box-shadow: 0 0 24px rgba(91, 108, 255, 0.45);
+}
+
+.team-btn.team-green.active {
+  color: var(--lime); border-color: var(--lime);
+  box-shadow: 0 0 24px rgba(125, 255, 61, 0.35);
+}
+
+.team-score {
+  position: absolute; left: 50%; top: 64px; transform: translateX(-50%);
+  font-family: var(--display); font-size: 17px; letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-score .ts-blue { color: var(--indigo); text-shadow: 0 0 12px rgba(91, 108, 255, 0.8); }
+.team-score .ts-green { color: var(--lime); text-shadow: 0 0 12px rgba(125, 255, 61, 0.6); }
+.team-score .ts-sep { color: var(--dim); margin: 0 10px; }
+
+.scoreboard tr.sb-team td {
+  padding-top: 10px;
+  font-family: var(--display); font-size: 13px; letter-spacing: 0.16em;
+}
+
+.scoreboard tr.sb-team-blue td { color: var(--indigo); }
+.scoreboard tr.sb-team-green td { color: var(--lime); }

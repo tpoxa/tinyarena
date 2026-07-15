@@ -116,7 +116,7 @@
   "maxOverheal": 200,
   "maxArmor": 150,
   "armorAbsorb": 0.66,
-  "fragLimit": 15,
+  "fragLimit": 25,
   "respawnSeconds": 3,
   "matchSeconds": 480
 }

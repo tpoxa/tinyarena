@@ -9,7 +9,9 @@ import { Hud } from '/js/hud.js';
 import { AudioEngine } from '/js/audio.js';
 import { Net } from '/js/net.js';
 import { MODELS, buildModel } from '/js/models.js';
-import { PICKUP_DEFS, PICKUPS } from '/shared/map.js';
+import { PICKUP_DEFS, PICKUPS, reloadArena } from '/shared/map.js';
+
+const TEAM_COLORS = ['#5b6cff', '#7dff3d'];
 
 const canvas = document.getElementById('game');
 // laptop-friendly: 1.5x pixel cap + 60fps cap do the thermal work; MSAA stays on
@@ -29,7 +31,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-const world = new World(scene);
+let world = new World(scene);
 const effects = new Effects(scene);
 const audio = new AudioEngine();
 const hud = new Hud();
@@ -74,6 +76,7 @@ net.on('snap', (msg) => {
     if (msg.tl <= 5 && msg.tl > 0 && msg.tl < prevTl) audio.play('tick');
     prevTl = msg.tl;
   }
+  if (msg.score) hud.setTeamScore(msg.score[0], msg.score[1]);
   for (const s of msg.players) {
     const info = roster.get(s.i);
     if (info) { info.frags = s.f; info.deaths = s.dt; info.dead = !!s.d; }
@@ -178,7 +181,7 @@ net.on('pickup', (msg) => {
 });
 
 net.on('win', (msg) => {
-  hud.showWin(msg.name, !!msg.timeup);
+  hud.showWin(msg.name, !!msg.timeup, typeof msg.team === 'number' && msg.team >= 0 ? TEAM_COLORS[msg.team] : null);
   audio.play('win');
   player.die();
 });
@@ -190,6 +193,16 @@ net.on('reset', () => {
 });
 
 net.on('note', (msg) => hud.centerMessage(msg.msg));
+
+// map rotation: refetch arena data and rebuild the world in place
+net.on('map', async (msg) => {
+  await reloadArena();
+  world.dispose();
+  world = new World(scene);
+  const label = msg.name.toUpperCase().replace('-', ' ');
+  document.getElementById('sb-map').textContent = label;
+  hud.centerMessage(`NEXT MAP: ${label}`);
+});
 
 net.on('disconnect', () => {
   document.getElementById('join-status').textContent = 'DISCONNECTED — REFRESH TO REJOIN';
@@ -229,6 +242,31 @@ setModel(modelIdx);
 document.getElementById('model-prev').addEventListener('click', () => setModel(modelIdx - 1));
 document.getElementById('model-next').addEventListener('click', () => setModel(modelIdx + 1));
 
+// ------------------------------------------------ team picker
+
+let team = localStorage.getItem('ta-team') === 'green' ? 'green' : 'blue';
+
+function setTeam(t) {
+  team = t;
+  localStorage.setItem('ta-team', t);
+  document.getElementById('team-blue').classList.toggle('active', t === 'blue');
+  document.getElementById('team-green').classList.toggle('active', t === 'green');
+}
+setTeam(team);
+document.getElementById('team-blue').addEventListener('click', () => setTeam('blue'));
+document.getElementById('team-green').addEventListener('click', () => setTeam('green'));
+
+async function pollTeams() {
+  if (joined) return;
+  try {
+    const h = await (await fetch('/healthz')).json();
+    document.getElementById('team-blue-n').textContent = h.teams?.blue ?? '·';
+    document.getElementById('team-green-n').textContent = h.teams?.green ?? '·';
+  } catch { /* server napping — counts stay stale */ }
+}
+pollTeams();
+setInterval(pollTeams, 2500);
+
 // ------------------------------------------------ join flow
 
 const joinForm = document.getElementById('join-form');
@@ -242,10 +280,10 @@ joinForm.addEventListener('submit', async (e) => {
   localStorage.setItem('ta-name', name);
   document.getElementById('join-status').textContent = 'CONNECTING…';
   try {
-    const welcome = await net.connect(name, MODELS[modelIdx].id);
+    const welcome = await net.connect(name, MODELS[modelIdx].id, team);
     joined = true;
     remotes.myId = net.myId;
-    roster.set(net.myId, { id: net.myId, name: welcome.name, color: welcome.color, bot: false, frags: 0, deaths: 0 });
+    roster.set(net.myId, { id: net.myId, name: welcome.name, color: welcome.color, team: welcome.team ?? 0, bot: false, frags: 0, deaths: 0 });
     const nameEl = document.getElementById('hud-name');
     nameEl.textContent = welcome.name;
     nameEl.style.color = welcome.color;

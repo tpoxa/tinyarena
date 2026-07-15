@@ -204,11 +204,11 @@ func (g *Game) stepBots(dt float64) {
 			}
 		}
 
-		// combat
+		// combat — never target teammates
 		var target *Player
 		targetDist := math.Inf(1)
 		for _, p := range g.players {
-			if p.ID == bot.ID || p.Dead {
+			if p.ID == bot.ID || p.Dead || p.Team == bot.Team {
 				continue
 			}
 			if d := g.botCanSee(bot, p); d >= 0 && d < targetDist {

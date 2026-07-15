@@ -11,11 +11,11 @@ export class Net {
 
   on(type, fn) { this.handlers[type] = fn; }
 
-  connect(name, model) {
+  connect(name, model, team) {
     return new Promise((resolve, reject) => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       this.ws = new WebSocket(`${proto}://${location.host}`);
-      this.ws.onopen = () => this.send({ t: 'join', name, model });
+      this.ws.onopen = () => this.send({ t: 'join', name, model, team });
       this.ws.onerror = () => reject(new Error('connection failed'));
       this.ws.onclose = () => {
         this.connected = false;

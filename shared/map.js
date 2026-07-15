@@ -12,15 +12,29 @@ if (typeof window === 'undefined') {
   data = await (await fetch('/shared/arena.json')).json();
 }
 
-export const ARENA = data;
-export const KILL_Y = data.killY;
-export const BOXES = data.boxes;
-export const JUMP_PADS = data.jumpPads;
-export const TELEPORTERS = data.teleporters;
-export const SPAWNS = data.spawns;
-export const PICKUPS = data.pickups;
-export const PICKUP_DEFS = data.pickupDefs;
-export const NAV_NODES = data.navNodes;
+// live bindings: reloadArena() swaps these when the server rotates maps
+export let ARENA = data;
+export let KILL_Y = data.killY;
+export let BOXES = data.boxes;
+export let JUMP_PADS = data.jumpPads;
+export let TELEPORTERS = data.teleporters;
+export let SPAWNS = data.spawns;
+export let PICKUPS = data.pickups;
+export let PICKUP_DEFS = data.pickupDefs;
+export let NAV_NODES = data.navNodes;
+
+export async function reloadArena() {
+  data = await (await fetch('/shared/arena.json')).json();
+  ARENA = data;
+  KILL_Y = data.killY;
+  BOXES = data.boxes;
+  JUMP_PADS = data.jumpPads;
+  TELEPORTERS = data.teleporters;
+  SPAWNS = data.spawns;
+  PICKUPS = data.pickups;
+  PICKUP_DEFS = data.pickupDefs;
+  NAV_NODES = data.navNodes;
+}
 
 // axis-aligned box helpers used by both sides
 export function boxMin(b) { return [b.p[0] - b.s[0] / 2, b.p[1] - b.s[1] / 2, b.p[2] - b.s[2] / 2]; }
