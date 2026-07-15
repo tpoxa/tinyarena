@@ -289,6 +289,9 @@ window.addEventListener('keyup', (e) => {
 let last = performance.now();
 let fps = 60;
 const FRAME_MIN = 1000 / 62; // render cap ~60fps — keeps 120Hz laptops cool
+let lowPerf = false;
+let lowSince = null;
+let renderMs = 0;
 
 function loop(now) {
   requestAnimationFrame(loop);
@@ -319,10 +322,24 @@ function loop(now) {
     }
     hud.updateScoreboard([...roster.values()], net.myId);
     hud.setMeta(net.ping, fps);
+
+    // GPU-bound (thermal throttle, weak GPU): drop render resolution once.
+    // High render time distinguishes this from the OS rationing frames on battery.
+    if (!lowPerf) {
+      lowSince = (fps < 45 && renderMs > 12) ? (lowSince ?? now) : null;
+      if (lowSince && now - lowSince > 4000) {
+        lowPerf = true;
+        renderer.setPixelRatio(1);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        hud.centerMessage('PERFORMANCE MODE');
+      }
+    }
   }
 
   effects.update(dt, camera);
+  const r0 = performance.now();
   renderer.render(scene, camera);
+  renderMs = renderMs * 0.9 + (performance.now() - r0) * 0.1;
 }
 
 requestAnimationFrame(loop);

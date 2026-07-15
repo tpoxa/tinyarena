@@ -109,7 +109,7 @@ export class Effects {
     );
     flame.rotation.x = -Math.PI / 2;
     flame.position.z = 0.5;
-    const light = new THREE.PointLight(0xff9a3d, 30, 10);
+    const light = new THREE.PointLight(0xff9a3d, 22, 7); // dynamic lights are the fps killer
     g.add(body, flame, light);
     this.scene.add(g);
     return g;
