@@ -13,6 +13,12 @@ go build -o tiny-arena-server . && ./tiny-arena-server
 # open http://localhost:3377
 ```
 
+Or without Go, straight from the registry:
+
+```sh
+docker run -p 3377:3377 ghcr.io/tpoxa/tinyarena
+```
+
 Colleagues on the same network: give them `http://<your-lan-ip>:3377`. That's the whole deployment story.
 
 Env: `PORT` (default 3377), `BOTS` (default 3), `MAP` (`neon-yard` or `circuit`), `MATCH_SECONDS` (default 480), `DEV=1` serves `public/` and `shared/` from disk so client edits apply on refresh.
@@ -37,6 +43,7 @@ Pick a body at the join screen — rubber duck, pizza slice, Christmas tree, ret
 - Death matters: the camera pulls out behind you while your body bursts into cubes that ride the killing blow
 - Matches run on a clock (8 minutes by default): first to 15 frags wins, or the leader when time runs out — either way you get the standings before the next round starts
 - Bots ride the jump pads too, so the high ground is never safe for long
+- Bots are named after their bodies: when QUACKERS rockets you off the map, that was the rubber duck. Watch out for FROSTY, SLICE, BOO, DUSTER, and the rest of the cast
 
 ![death](docs/death.png)
 
@@ -63,6 +70,10 @@ node server/smoke.js
 ```
 
 `server/smoke.js` drives two WebSocket clients through join → shoot → frag → respawn against a real server.
+
+## How tinyarena.online runs
+
+Every push to `main` builds a distroless image (with the smoke test as a gate), tags it `main-<sha>-<timestamp>`, and pushes it to ghcr. FluxCD on a GKE cluster watches the registry, bumps the tag in its GitOps repo, and rolls the deployment — single replica with a `Recreate` strategy, because the game world lives in one process's memory. cert-manager handles TLS, and nginx-ingress proxies the websockets. Nobody deploys anything by hand.
 
 ## Made with Claude Code
 
