@@ -133,6 +133,13 @@ func (g *Game) stepBots(dt float64) {
 			for _, pad := range g.arena.JumpPads {
 				dx, dz := bot.Pos[0]-pad.P[0], bot.Pos[2]-pad.P[2]
 				if dx*dx+dz*dz < pad.R*pad.R && math.Abs(bot.Pos[1]-pad.P[1]) < 0.6 {
+					// launch from the pad's near edge: the arc only clears the
+					// platform lip from there (far-edge launches clip its side,
+					// drop the bot next to the pad, and loop forever)
+					if vh := math.Hypot(pad.V[0], pad.V[2]); vh > 0 {
+						bot.Pos[0] = pad.P[0] - pad.V[0]/vh*0.9
+						bot.Pos[2] = pad.P[2] - pad.V[2]/vh*0.9
+					}
 					bot.Vel = pad.V
 					bot.Grounded = false
 					bot.NodeI = -1 // re-pick a waypoint up top
