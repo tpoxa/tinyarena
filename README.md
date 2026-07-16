@@ -29,11 +29,18 @@ Three maps ship in the binary, and the server rotates to the next one after ever
 ![circuit](docs/circuit.png)
 ![vertigo](docs/vertigo.png)
 
+## Blue versus green
+
+Every match is team deathmatch — there is no other mode. Pick a side at the join screen (it shows the live headcount of each team) and your color follows you everywhere: the ring under your feet, your name tag, the killfeed, the scoreboard. First team to 25 points wins the round; if the eight-minute clock runs out first, the leading team takes it, and a dead-even score is an honest draw. Friendly fire is on at half damage, and a teamkill costs you a frag and your team a point — aim your rockets with love.
+
+Bots keep the teams honest: they always join the smaller side, they never shoot their own, and the roster rotates itself — every few minutes one wanders off and a new body joins.
+
+![winscreen](docs/winscreen.png)
+![scoreboard](docs/teams.png)
+
 ## Play
 
-It's always team deathmatch: BLUE versus GREEN. Pick your side at the join screen (live player counts included) and pick a body — rubber duck, pizza slice, Christmas tree, retro PC, and eleven more low-poly desk heroes. Bots fill in on whichever team is smaller, they never shoot their own, and every few minutes one wanders off and a new face joins.
-
-![scoreboard](docs/teams.png)
+Pick a body — rubber duck, pizza slice, Christmas tree, retro PC, and eleven more low-poly desk heroes. Bots pick their own.
 
 ![join](docs/join.png)
 ![cast](docs/cast.png)
@@ -45,8 +52,6 @@ It's always team deathmatch: BLUE versus GREEN. Pick your side at the join scree
 - **QUAD DAMAGE** spawns on the east platform every 60 s: 3× damage for 20 s, lost on death, and everyone gets told you have it
 - Fast frags stack DOUBLE / TRIPLE / MULTI / MONSTER KILL; staying alive stacks KILLING SPREE (5), RAMPAGE (8), GODLIKE (12)
 - Death matters: the camera pulls out behind you while your body bursts into cubes that ride the killing blow
-- Matches run on a clock (8 minutes by default): first team to 25 points wins, or the leading team when time runs out — you get the standings before the next round, and the map rotates every match, humans present or not
-- Friendly fire is on at half damage. A teamkill costs you a frag and your team a point, so aim your rockets with love
 - Bots ride the jump pads too, so the high ground is never safe for long. They strafe-weave in firefights, snipe with the railgun across long sightlines, and run for health packs when hurt
 - Bots are named after their bodies: when QUACKERS rockets you off the map, that was the rubber duck. Watch out for FROSTY, SLICE, BOO, DUSTER, and the rest of the cast
 
