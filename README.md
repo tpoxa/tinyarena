@@ -4,7 +4,7 @@ Quake-style team deathmatch in your browser, in one 10 MB Go binary. BLUE versus
 
 **Play it live: [tinyarena.online](https://tinyarena.online)** — the bots are already fighting; they don't wait for you.
 
-![arena](docs/arena.png)
+![gameplay](docs/gameplay.gif)
 
 ## Run
 
