@@ -90,6 +90,12 @@ type Player struct {
 	BotFireAt float64
 	Vel       Vec3
 	Grounded  bool
+
+	// stuck watchdog: knockback can wedge a bot somewhere the nav graph
+	// never planned for — detect no-movement and shake it loose
+	StuckRef Vec3
+	StuckAt  float64
+	StuckN   int
 }
 
 type Rocket struct {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"math"
 	"math/rand"
 )
@@ -160,6 +161,18 @@ func (g *Game) stepBots(dt float64) {
 			continue
 		}
 
+		// pick a target first — movement and aim both want to know
+		var target *Player
+		targetDist := math.Inf(1)
+		for _, p := range g.players {
+			if p.ID == bot.ID || p.Dead || p.Team == bot.Team {
+				continue
+			}
+			if d := g.botCanSee(bot, p); d >= 0 && d < targetDist {
+				target, targetDist = p, d
+			}
+		}
+
 		// walk the waypoint graph edge by edge — every edge is wall-free by construction
 		if bot.NodeI < 0 {
 			bot.NodeI = g.nearestNode(bot.Pos)
@@ -177,14 +190,39 @@ func (g *Game) stepBots(dt float64) {
 				nbrs = g.navEdges[bot.NodeI]
 			}
 			bot.PrevI = bot.NodeI
-			if len(nbrs) > 0 {
-				bot.NodeI = nbrs[rand.Intn(len(nbrs))]
-			} else {
+			switch {
+			case len(nbrs) == 0:
 				bot.NodeI = g.nearestNode(bot.Pos)
+			case bot.HP < 40:
+				// hurt: head for whichever neighbor is closest to live health
+				if hp := g.nearestHealthPickup(bot.Pos); hp != nil {
+					best, bestD := nbrs[0], math.Inf(1)
+					for _, j := range nbrs {
+						if d := dist3(g.arena.NavNodes[j], *hp); d < bestD {
+							bestD, best = d, j
+						}
+					}
+					bot.NodeI = best
+				} else {
+					bot.NodeI = nbrs[rand.Intn(len(nbrs))]
+				}
+			default:
+				bot.NodeI = nbrs[rand.Intn(len(nbrs))]
 			}
 			wp = g.arena.NavNodes[bot.NodeI]
 		}
 		mv := norm(Vec3{wp[0] - bot.Pos[0], 0, wp[2] - bot.Pos[2]})
+
+		// in a firefight, weave sideways across the firing line — but never off a ledge
+		if target != nil {
+			td := norm(Vec3{target.Pos[0] - bot.Pos[0], 0, target.Pos[2] - bot.Pos[2]})
+			weave := math.Sin(t*3.1 + float64(bot.ID)*1.7)
+			wv := norm(Vec3{mv[0]*0.55 - td[2]*weave*0.85, 0, mv[2]*0.55 + td[0]*weave*0.85})
+			probe := Vec3{bot.Pos[0] + wv[0]*1.2, bot.Pos[1] + 0.4, bot.Pos[2] + wv[2]*1.2}
+			if _, hit := g.raycastWorld(probe, Vec3{0, -2.4, 0}); hit {
+				mv = wv
+			}
+		}
 		const speed = 6.5
 		g.botMoveAxis(bot, 0, mv[0]*speed*dt)
 		g.botMoveAxis(bot, 2, mv[2]*speed*dt)
@@ -204,17 +242,7 @@ func (g *Game) stepBots(dt float64) {
 			}
 		}
 
-		// combat — never target teammates
-		var target *Player
-		targetDist := math.Inf(1)
-		for _, p := range g.players {
-			if p.ID == bot.ID || p.Dead || p.Team == bot.Team {
-				continue
-			}
-			if d := g.botCanSee(bot, p); d >= 0 && d < targetDist {
-				target, targetDist = p, d
-			}
-		}
+		// combat
 		if target != nil {
 			a, b := eyePos(bot), eyePos(target)
 			dir := norm(Vec3{b[0] - a[0], b[1] - a[1], b[2] - a[2]})
@@ -222,14 +250,19 @@ func (g *Game) stepBots(dt float64) {
 			bot.Pitch = math.Asin(math.Max(-1, math.Min(1, dir[1])))
 			if t >= bot.BotFireAt {
 				w := &g.arena.Weapons[0]
-				if targetDist > 9 && bot.Ammo["rockets"] > 0 && rand.Float64() < 0.35 {
+				aimErr := 0.13
+				switch {
+				case targetDist > 18 && bot.Ammo["slugs"] > 0 && rand.Float64() < 0.5:
+					w = &g.arena.Weapons[2] // long lines get railed
+					aimErr = 0.07
+				case targetDist > 9 && bot.Ammo["rockets"] > 0 && rand.Float64() < 0.35:
 					w = &g.arena.Weapons[1]
 				}
-				const err = 0.13
+				bot.Weapon = w.ID // everyone sees what it actually holds
 				shotDir := norm(Vec3{
-					dir[0] + (rand.Float64()-0.5)*err,
-					dir[1] + (rand.Float64()-0.5)*err,
-					dir[2] + (rand.Float64()-0.5)*err,
+					dir[0] + (rand.Float64()-0.5)*aimErr,
+					dir[1] + (rand.Float64()-0.5)*aimErr,
+					dir[2] + (rand.Float64()-0.5)*aimErr,
 				})
 				e := eyePos(bot)
 				g.handleFire(bot, w.ID, e[:], shotDir[:])
@@ -239,5 +272,40 @@ func (g *Game) stepBots(dt float64) {
 			bot.Yaw = math.Atan2(-mv[0], -mv[2])
 			bot.Pitch = 0
 		}
+
+		// stuck watchdog: barely moved for 4s → new route; 8s → relocate
+		if t >= bot.StuckAt {
+			if bot.Grounded && dist3(bot.Pos, bot.StuckRef) < 0.7 {
+				bot.StuckN++
+				if bot.StuckN >= 2 {
+					log.Printf("~ %s was stuck at %.0f,%.0f,%.0f — relocated", bot.Name, bot.Pos[0], bot.Pos[1], bot.Pos[2])
+					g.respawn(bot)
+					bot.StuckN = 0
+				} else {
+					bot.NodeI = rand.Intn(len(g.arena.NavNodes))
+					bot.PrevI = -1
+				}
+			} else {
+				bot.StuckN = 0
+			}
+			bot.StuckRef = bot.Pos
+			bot.StuckAt = t + 4
+		}
 	}
+}
+
+// nearest live health pickup (hp25 or mega), or nil if all are on cooldown
+func (g *Game) nearestHealthPickup(pos Vec3) *Vec3 {
+	var best *Vec3
+	bestD := math.Inf(1)
+	for _, pk := range g.pickups {
+		if !pk.Active || g.arena.PickupDefs[pk.Spec.Type].HP <= 0 {
+			continue
+		}
+		if d := dist3(pos, pk.Spec.P); d < bestD {
+			p := pk.Spec.P
+			bestD, best = d, &p
+		}
+	}
+	return best
 }

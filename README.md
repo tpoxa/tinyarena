@@ -47,7 +47,7 @@ It's always team deathmatch: BLUE versus GREEN. Pick your side at the join scree
 - Death matters: the camera pulls out behind you while your body bursts into cubes that ride the killing blow
 - Matches run on a clock (8 minutes by default): first team to 25 points wins, or the leading team when time runs out — you get the standings before the next round, and the map rotates every match, humans present or not
 - Friendly fire is on at half damage. A teamkill costs you a frag and your team a point, so aim your rockets with love
-- Bots ride the jump pads too, so the high ground is never safe for long
+- Bots ride the jump pads too, so the high ground is never safe for long. They strafe-weave in firefights, snipe with the railgun across long sightlines, and run for health packs when hurt
 - Bots are named after their bodies: when QUACKERS rockets you off the map, that was the rubber duck. Watch out for FROSTY, SLICE, BOO, DUSTER, and the rest of the cast
 
 ![death](docs/death.png)
