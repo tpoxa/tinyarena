@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PLAY — TINY ARENA</title>
+  <meta name="robots" content="noindex,follow" />
+  <meta name="description" content="Free browser team deathmatch: blue vs green, rocket jumps, quad damage, and bots shaped like office junk. No install, no account — click and frag." />
+  <link rel="canonical" href="https://tinyarena.online/" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://tinyarena.online/" />
+  <meta property="og:title" content="TINY ARENA — team deathmatch in your browser" />
+  <meta property="og:description" content="Blue vs green. Rocket jumps, quad damage, bots shaped like office junk. No install, no account — click and frag." />
+  <meta property="og:image" content="https://tinyarena.online/og.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/three.module.js" } }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- join screen -->
+  <div id="join" class="join">
+    <div class="join-noise"></div>
+    <div class="join-inner">
+      <div class="join-logo">
+        <span class="join-logo-tiny">TINY</span>
+        <span class="join-logo-arena">ARENA</span>
+      </div>
+      <div class="join-sub">// TEAM DEATHMATCH · BLUE VS GREEN</div>
+      <form id="join-form" autocomplete="off">
+        <input id="join-name" type="text" maxlength="14" placeholder="CALLSIGN" spellcheck="false" />
+        <button id="join-btn" type="submit">ENTER ARENA</button>
+      </form>
+      <div class="team-pick">
+        <button id="team-blue" class="team-btn team-blue" type="button">BLUE <span id="team-blue-n">·</span></button>
+        <button id="team-green" class="team-btn team-green" type="button">GREEN <span id="team-green-n">·</span></button>
+      </div>
+      <div class="model-pick">
+        <button id="model-prev" class="mp-btn" type="button" aria-label="previous body">◀</button>
+        <div class="mp-stage">
+          <canvas id="model-preview" width="200" height="200"></canvas>
+          <div id="model-name" class="model-name">TROOPER</div>
+        </div>
+        <button id="model-next" class="mp-btn" type="button" aria-label="next body">▶</button>
+      </div>
+      <div class="join-keys">
+        <span><b>WASD</b> move</span>
+        <span><b>SPACE</b> jump</span>
+        <span><b>MOUSE</b> aim + fire</span>
+        <span><b>1·2·3 / wheel</b> weapons</span>
+        <span><b>TAB</b> scores</span>
+        <span><b>B·N</b> add·kick bot</span>
+      </div>
+      <div id="join-status" class="join-status"></div>
+    </div>
+  </div>
+
+  <!-- in-game HUD -->
+  <div id="hud" class="hud hidden">
+    <div class="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
+    <div id="hitmarker" class="hitmarker"><i></i><i></i><i></i><i></i></div>
+    <div id="dmg-vignette" class="dmg-vignette"></div>
+    <div id="match-clock" class="match-clock">–:––</div>
+    <div id="team-score" class="team-score">
+      <span id="ts-blue" class="ts-blue">0</span><span class="ts-sep">—</span><span id="ts-green" class="ts-green">0</span>
+    </div>
+    <div id="killfeed" class="killfeed"></div>
+    <div id="center-msg" class="center-msg"></div>
+    <div id="pickup-msg" class="pickup-msg"></div>
+    <div id="streak-banner" class="streak-banner"></div>
+    <div class="quad-vignette"></div>
+    <div id="quad-hud" class="quad-hud hidden">QUAD DAMAGE <span id="quad-secs">20</span>s</div>
+
+    <div class="hud-bottom">
+      <div class="stat stat-hp">
+        <div class="stat-icon">✚</div>
+        <div id="hud-hp" class="stat-val">100</div>
+      </div>
+      <div class="stat stat-armor">
+        <div class="stat-icon">▣</div>
+        <div id="hud-armor" class="stat-val">0</div>
+      </div>
+      <div class="stat stat-ammo">
+        <div id="hud-ammo" class="stat-val">100</div>
+        <div id="hud-weapon" class="stat-label">MACHINEGUN</div>
+      </div>
+    </div>
+
+    <div id="weapon-slots" class="weapon-slots">
+      <div class="wslot active" data-w="0"><b>1</b>MG</div>
+      <div class="wslot" data-w="1"><b>2</b>RL</div>
+      <div class="wslot" data-w="2"><b>3</b>RG</div>
+    </div>
+
+    <div id="hud-name" class="hud-name"></div>
+    <div id="hud-meta" class="hud-meta"><span id="hud-ping">–</span> ms · <span id="hud-fps">–</span> fps</div>
+
+    <div id="scoreboard" class="scoreboard hidden">
+      <div class="sb-title">TINY ARENA · <span id="sb-map">DEATHMATCH</span> · FRAG LIMIT <span id="sb-limit">15</span></div>
+      <table><thead><tr><th></th><th>PLAYER</th><th>FRAGS</th><th>DEATHS</th></tr></thead>
+      <tbody id="sb-body"></tbody></table>
+    </div>
+
+    <div id="death-overlay" class="death-overlay hidden">
+      <div id="death-msg" class="death-msg">FRAGGED BY QUACKERS</div>
+      <div id="death-count" class="death-count">3</div>
+    </div>
+
+    <div id="win-overlay" class="win-overlay hidden">
+      <div id="win-msg" class="win-msg">QUACKERS WINS</div>
+      <div class="win-sub">next round starting…</div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>

@@ -131,6 +131,16 @@ func main() {
 	files := http.FileServer(http.FS(publicFS))
 
 	mux := http.NewServeMux()
+	// the game itself lives at /play; the root serves the landing page
+	mux.HandleFunc("/play", func(w http.ResponseWriter, _ *http.Request) {
+		b, err := fs.ReadFile(publicFS, "play.html")
+		if err != nil {
+			http.Error(w, "missing play.html", 500)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(b)
+	})
 	// the active map is always served at the path the client fetches
 	mux.HandleFunc("/shared/arena.json", func(w http.ResponseWriter, _ *http.Request) {
 		raw := game.arenaRaw.Load().([]byte)

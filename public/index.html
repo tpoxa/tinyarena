@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TINY ARENA — team deathmatch in your browser</title>
-  <meta name="description" content="Free browser team deathmatch: blue vs green, rocket jumps, quad damage, and bots shaped like office junk. No install, no account — click and frag." />
+  <title>TINY ARENA — free team deathmatch in your browser</title>
+  <meta name="description" content="Blue vs green team deathmatch that runs in your browser. Rocket jumps, quad damage, bots shaped like office junk. No download, no account. Open source, one 10 MB binary." />
   <link rel="canonical" href="https://tinyarena.online/" />
   <link rel="icon" type="image/png" href="/favicon.png" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://tinyarena.online/" />
-  <meta property="og:title" content="TINY ARENA — team deathmatch in your browser" />
+  <meta property="og:title" content="TINY ARENA — free team deathmatch in your browser" />
   <meta property="og:description" content="Blue vs green. Rocket jumps, quad damage, bots shaped like office junk. No install, no account — click and frag." />
   <meta property="og:image" content="https://tinyarena.online/og.png" />
   <meta name="twitter:card" content="summary_large_image" />
@@ -17,107 +17,79 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
-  <script type="importmap">
-    { "imports": { "three": "/vendor/three/three.module.js" } }
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "Tiny Arena",
+    "url": "https://tinyarena.online/",
+    "image": "https://tinyarena.online/og.png",
+    "description": "Free browser team deathmatch: blue vs green, rocket jumps, quad damage, and bots shaped like office junk. Open source, single Go binary.",
+    "genre": ["Shooter", "Arena"],
+    "playMode": "MultiPlayer",
+    "gamePlatform": "Web Browser",
+    "operatingSystem": "Any",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "author": { "@type": "Person", "name": "Maksym Trofimenko" }
+  }
   </script>
 </head>
-<body>
-  <canvas id="game"></canvas>
+<body class="lp">
+  <div class="join-noise"></div>
 
-  <!-- join screen -->
-  <div id="join" class="join">
-    <div class="join-noise"></div>
-    <div class="join-inner">
-      <div class="join-logo">
-        <span class="join-logo-tiny">TINY</span>
-        <span class="join-logo-arena">ARENA</span>
-      </div>
-      <div class="join-sub">// TEAM DEATHMATCH · BLUE VS GREEN</div>
-      <form id="join-form" autocomplete="off">
-        <input id="join-name" type="text" maxlength="14" placeholder="CALLSIGN" spellcheck="false" />
-        <button id="join-btn" type="submit">ENTER ARENA</button>
-      </form>
-      <div class="team-pick">
-        <button id="team-blue" class="team-btn team-blue" type="button">BLUE <span id="team-blue-n">·</span></button>
-        <button id="team-green" class="team-btn team-green" type="button">GREEN <span id="team-green-n">·</span></button>
-      </div>
-      <div class="model-pick">
-        <button id="model-prev" class="mp-btn" type="button" aria-label="previous body">◀</button>
-        <div class="mp-stage">
-          <canvas id="model-preview" width="200" height="200"></canvas>
-          <div id="model-name" class="model-name">TROOPER</div>
-        </div>
-        <button id="model-next" class="mp-btn" type="button" aria-label="next body">▶</button>
-      </div>
-      <div class="join-keys">
-        <span><b>WASD</b> move</span>
-        <span><b>SPACE</b> jump</span>
-        <span><b>MOUSE</b> aim + fire</span>
-        <span><b>1·2·3 / wheel</b> weapons</span>
-        <span><b>TAB</b> scores</span>
-        <span><b>B·N</b> add·kick bot</span>
-      </div>
-      <div id="join-status" class="join-status"></div>
+  <header class="lp-hero">
+    <div class="join-logo">
+      <span class="join-logo-tiny">TINY</span>
+      <span class="join-logo-arena">ARENA</span>
     </div>
-  </div>
+    <h1 class="lp-h1">Team deathmatch in your browser. Blue versus green, forever.</h1>
+    <p class="lp-status" id="lp-status">The bots are fighting right now.</p>
+    <a class="lp-play" href="/play">PLAY NOW</a>
+    <p class="lp-sub">No download. No account. You'll be in the arena in three seconds.</p>
+  </header>
 
-  <!-- in-game HUD -->
-  <div id="hud" class="hud hidden">
-    <div class="crosshair"><i></i><i></i><i></i><i></i><b></b></div>
-    <div id="hitmarker" class="hitmarker"><i></i><i></i><i></i><i></i></div>
-    <div id="dmg-vignette" class="dmg-vignette"></div>
-    <div id="match-clock" class="match-clock">–:––</div>
-    <div id="team-score" class="team-score">
-      <span id="ts-blue" class="ts-blue">0</span><span class="ts-sep">—</span><span id="ts-green" class="ts-green">0</span>
-    </div>
-    <div id="killfeed" class="killfeed"></div>
-    <div id="center-msg" class="center-msg"></div>
-    <div id="pickup-msg" class="pickup-msg"></div>
-    <div id="streak-banner" class="streak-banner"></div>
-    <div class="quad-vignette"></div>
-    <div id="quad-hud" class="quad-hud hidden">QUAD DAMAGE <span id="quad-secs">20</span>s</div>
+  <main class="lp-main">
+    <section class="lp-section">
+      <h2>A proper arena shooter, minus everything else</h2>
+      <p>Tiny Arena is a Quake-style team deathmatch that lives entirely in your browser. Rocket jumps, railgun duels, quad damage, knockback that throws people off the map. First team to 25 points wins the round, the leading team takes it when the eight-minute clock runs out, and the map rotates every match whether anyone is watching or not.</p>
+      <img src="/og.png" alt="Tiny Arena gameplay: rail beams crossing the CIRCUIT map at 3-3" loading="lazy" />
+    </section>
 
-    <div class="hud-bottom">
-      <div class="stat stat-hp">
-        <div class="stat-icon">✚</div>
-        <div id="hud-hp" class="stat-val">100</div>
-      </div>
-      <div class="stat stat-armor">
-        <div class="stat-icon">▣</div>
-        <div id="hud-armor" class="stat-val">0</div>
-      </div>
-      <div class="stat stat-ammo">
-        <div id="hud-ammo" class="stat-val">100</div>
-        <div id="hud-weapon" class="stat-label">MACHINEGUN</div>
-      </div>
-    </div>
+    <section class="lp-section">
+      <h2>Play as a rubber duck</h2>
+      <p>Fifteen playable bodies: a duck, a pizza slice, a snowman, a retro PC, a robot vacuum, and ten more low-poly desk heroes. The bots wear them too — when QUACKERS rockets you off the ledge, that was the duck. Bots balance the teams, never shoot their own, strafe in firefights, and snipe across long sightlines, so an empty server still puts up a fight.</p>
+      <img src="/img/teams.png" alt="Team scoreboard: blue and green teams with bot players FROSTY, BOO and QUACKERS" loading="lazy" />
+    </section>
 
-    <div id="weapon-slots" class="weapon-slots">
-      <div class="wslot active" data-w="0"><b>1</b>MG</div>
-      <div class="wslot" data-w="1"><b>2</b>RL</div>
-      <div class="wslot" data-w="2"><b>3</b>RG</div>
-    </div>
+    <section class="lp-section">
+      <h2>Three maps on rotation</h2>
+      <p>NEON YARD is the classic square with side platforms. CIRCUIT wraps a ring of floor around a void pit with a mega-health island in the middle. VERTIGO stacks four platforms around a tower with the quad on top. Jump pads chain you upward on all of them, and the bots ride the pads too.</p>
+      <img src="/img/vertigo.png" alt="VERTIGO map: central tower with jump pads and corner platforms" loading="lazy" />
+    </section>
 
-    <div id="hud-name" class="hud-name"></div>
-    <div id="hud-meta" class="hud-meta"><span id="hud-ping">–</span> ms · <span id="hud-fps">–</span> fps</div>
+    <section class="lp-section">
+      <h2>Open source, one file</h2>
+      <p>The whole game — server, bots, maps, sounds, client — compiles into a single 10&nbsp;MB Go binary. MIT licensed. Run your own arena on a laptop for your office:</p>
+      <pre class="lp-code">docker run -p 3377:3377 ghcr.io/tpoxa/tinyarena</pre>
+      <p>Built almost entirely by <a href="https://claude.com/claude-code">Claude Code</a>, bugs included (it fixed those too). Source, tests and the full story: <a href="https://github.com/tpoxa/tinyarena">github.com/tpoxa/tinyarena</a> — if it makes you smile, leave a star.</p>
+    </section>
 
-    <div id="scoreboard" class="scoreboard hidden">
-      <div class="sb-title">TINY ARENA · <span id="sb-map">DEATHMATCH</span> · FRAG LIMIT <span id="sb-limit">15</span></div>
-      <table><thead><tr><th></th><th>PLAYER</th><th>FRAGS</th><th>DEATHS</th></tr></thead>
-      <tbody id="sb-body"></tbody></table>
-    </div>
+    <a class="lp-play lp-play-again" href="/play">ENTER THE ARENA</a>
+  </main>
 
-    <div id="death-overlay" class="death-overlay hidden">
-      <div id="death-msg" class="death-msg">FRAGGED BY QUACKERS</div>
-      <div id="death-count" class="death-count">3</div>
-    </div>
+  <footer class="lp-footer">
+    MIT · <a href="https://github.com/tpoxa/tinyarena">source</a> · made with <a href="https://claude.com/claude-code">Claude Code</a>
+  </footer>
 
-    <div id="win-overlay" class="win-overlay hidden">
-      <div id="win-msg" class="win-msg">QUACKERS WINS</div>
-      <div class="win-sub">next round starting…</div>
-    </div>
-  </div>
-
-  <script type="module" src="/js/main.js"></script>
+  <script>
+    fetch('/healthz').then(r => r.json()).then(h => {
+      const el = document.getElementById('lp-status');
+      const map = (h.map || '').toUpperCase().replace('-', ' ');
+      const players = h.teams ? h.teams.blue + h.teams.green : 0;
+      el.textContent = h.humans > 0
+        ? `${h.humans} human${h.humans > 1 ? 's' : ''} and ${players - h.humans} bots are fighting on ${map} right now.`
+        : `${players} bots are fighting on ${map} right now. Humans needed.`;
+    }).catch(() => {});
+  </script>
 </body>
 </html>
