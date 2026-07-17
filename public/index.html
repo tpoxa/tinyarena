@@ -82,14 +82,16 @@
   </footer>
 
   <script>
-    fetch('/healthz').then(r => r.json()).then(h => {
-      const el = document.getElementById('lp-status');
-      const map = (h.map || '').toUpperCase().replace('-', ' ');
-      const players = h.teams ? h.teams.blue + h.teams.green : 0;
-      el.textContent = h.humans > 0
-        ? `${h.humans} human${h.humans > 1 ? 's' : ''} and ${players - h.humans} bots are fighting on ${map} right now.`
-        : `${players} bots are fighting on ${map} right now. Humans needed.`;
-    }).catch(() => {});
+    function liveStatus() {
+      fetch('/healthz').then(r => r.json()).then(h => {
+        const map = (h.map || '').toUpperCase().replace('-', ' ');
+        const players = h.teams ? h.teams.blue + h.teams.green : 0;
+        document.getElementById('lp-status').textContent =
+          `${players} players are fighting on ${map} right now — jump in.`;
+      }).catch(() => {});
+    }
+    liveStatus();
+    setInterval(liveStatus, 5000);
   </script>
 </body>
 </html>
