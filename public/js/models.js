@@ -165,6 +165,7 @@ function pizza(col) {
   olive.position.set(-0.12, 0.3, -0.1);
   upper.add(slice, crust, olive);
   g.add(upper);
+  upper.scale.set(0.80, 1, 0.80); // keep the silhouette inside the hitbox
   g.userData.parts = { upper };
   return g;
 }
@@ -335,6 +336,7 @@ function crt(col) {
   led.position.set(0.4, -0.32, -0.44);
   upper.add(shell, bezel, screen, prompt, led);
   g.add(foot, neck, upper);
+  upper.scale.set(0.82, 1, 0.82); // keep the silhouette inside the hitbox
   g.userData.parts = { upper };
   return g;
 }
@@ -398,6 +400,7 @@ function burger(col) {
   flag.position.set(0.07, 0.95, 0);
   upper.add(bunBottom, patty, cheese, lettuce, tomato, bunTop, pick, flag);
   g.add(upper);
+  upper.scale.set(0.85, 1, 0.85); // keep the silhouette inside the hitbox
   g.userData.parts = { upper };
   return g;
 }
@@ -422,6 +425,7 @@ function floppy(col) {
   corner.position.set(-0.47, 0.47, 0);
   upper.add(disk, label, scribble, scribble2, shutter, slot, corner);
   g.add(upper);
+  upper.scale.set(0.78, 1, 0.78); // keep the silhouette inside the hitbox
   g.userData.parts = { upper };
   return g;
 }

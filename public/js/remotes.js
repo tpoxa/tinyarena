@@ -134,8 +134,10 @@ export class Remotes {
       if (r.dead && !wasDead) {
         r.group.visible = false;
         this.effects.deathBurst(s.p, r.info.color);
+        r.buf.length = 0;
       }
       if (!r.dead) {
+        if (wasDead) r.buf.length = 0; // respawn pops into place — no gliding through walls
         r.buf.push({ t, p: s.p, yw: s.yw, pt: s.pt });
         if (r.buf.length > 30) r.buf.shift();
       }
