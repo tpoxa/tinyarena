@@ -1,7 +1,6 @@
 package main
 
 import (
-	"log"
 	"math"
 	"math/rand"
 )
@@ -273,23 +272,16 @@ func (g *Game) stepBots(dt float64) {
 			bot.Pitch = 0
 		}
 
-		// stuck watchdog: barely moved for 4s → new route; 8s → relocate
+		// stuck watchdog: a genuinely wedged bot (almost no movement over 3s)
+		// picks a fresh route. It never teleports a living bot — that made
+		// bots glide across the map on the client ("running on air").
 		if t >= bot.StuckAt {
-			if bot.Grounded && dist3(bot.Pos, bot.StuckRef) < 0.7 {
-				bot.StuckN++
-				if bot.StuckN >= 2 {
-					log.Printf("~ %s was stuck at %.0f,%.0f,%.0f — relocated", bot.Name, bot.Pos[0], bot.Pos[1], bot.Pos[2])
-					g.respawn(bot)
-					bot.StuckN = 0
-				} else {
-					bot.NodeI = rand.Intn(len(g.arena.NavNodes))
-					bot.PrevI = -1
-				}
-			} else {
-				bot.StuckN = 0
+			if bot.Grounded && dist3(bot.Pos, bot.StuckRef) < 0.35 {
+				bot.NodeI = rand.Intn(len(g.arena.NavNodes))
+				bot.PrevI = -1
 			}
 			bot.StuckRef = bot.Pos
-			bot.StuckAt = t + 4
+			bot.StuckAt = t + 3
 		}
 	}
 }

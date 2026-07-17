@@ -111,6 +111,8 @@ net.on('spawn', (msg) => {
     hud.hideDeath();
     hud.centerMessage('FIGHT!');
     audio.play('switch');
+  } else {
+    remotes.onSpawn(msg.id, msg.p, msg.yaw); // pop into place, never glide in
   }
 });
 
@@ -199,6 +201,7 @@ net.on('map', async (msg) => {
   await reloadArena();
   world.dispose();
   world = new World(scene);
+  remotes.resetAll(); // old-map coordinates are meaningless now
   const label = msg.name.toUpperCase().replace('-', ' ');
   document.getElementById('sb-map').textContent = label;
   hud.centerMessage(`NEXT MAP: ${label}`);

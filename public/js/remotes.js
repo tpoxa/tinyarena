@@ -75,6 +75,26 @@ export class Remotes {
 
   get(id) { return this.players.get(id); }
 
+  // map changed under us — drop every stale position so nobody interpolates
+  // across the old geometry (bots gliding through the air on the new map)
+  resetAll() {
+    for (const r of this.players.values()) {
+      r.buf = [];
+      r.dead = true;
+      r.group.visible = false;
+    }
+  }
+
+  // server respawn/teleport for a remote: pop to the new spot, don't interpolate there
+  onSpawn(id, p, yaw = 0) {
+    const r = this.players.get(id);
+    if (!r) return;
+    r.dead = false;
+    r.buf = [{ t: performance.now() / 1000, p, yw: yaw, pt: 0 }];
+    r.group.position.set(p[0], p[1], p[2]);
+    r.group.visible = true;
+  }
+
   // kill confirmed by the server — burst at the rendered position, riding the impulse
   killBurst(id, kick) {
     const r = this.players.get(id);
