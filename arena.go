@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"strings"
@@ -129,7 +130,33 @@ func loadArena(name string) (*Arena, []byte) {
 	if a.MatchSeconds == 0 {
 		a.MatchSeconds = 480
 	}
+	a.warnBuriedPoints(name)
 	return &a, raw
+}
+
+// catch map-authoring mistakes: a spawn or floor waypoint sitting inside a
+// solid box traps whoever lands on it (bots "appear inside scene boxes").
+func (a *Arena) warnBuriedPoints(mapName string) {
+	inSolid := func(p Vec3) bool {
+		c := Vec3{p[0], p[1] + 0.9, p[2]} // collision-box center
+		for _, b := range a.Boxes {
+			mn, mx := boxMin(b), boxMax(b)
+			if c[0] > mn[0] && c[0] < mx[0] && c[1] > mn[1] && c[1] < mx[1] && c[2] > mn[2] && c[2] < mx[2] {
+				return true
+			}
+		}
+		return false
+	}
+	for i, s := range a.Spawns {
+		if inSolid(s.P) {
+			log.Printf("MAP WARNING %s: spawn %d at %v is inside a box — will trap players", mapName, i, s.P)
+		}
+	}
+	for i, n := range a.NavNodes {
+		if inSolid(n) {
+			log.Printf("MAP WARNING %s: navNode %d at %v is inside a box — bots will wedge", mapName, i, n)
+		}
+	}
 }
 
 // ---------------------------------------------------------------- geometry
