@@ -62,8 +62,9 @@ export class LocalPlayer {
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Tab') e.preventDefault();
       this.keys[e.code] = true;
-      if (e.code === 'Digit1') this.switchWeapon(0);
-      if (e.code === 'Digit2') this.switchWeapon(1);
+      // quick weapon keys: 1/2/3 plus Q machinegun, E rockets
+      if (e.code === 'Digit1' || e.code === 'KeyQ') this.switchWeapon(0);
+      if (e.code === 'Digit2' || e.code === 'KeyE') this.switchWeapon(1);
       if (e.code === 'Digit3') this.switchWeapon(2);
     });
     window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
@@ -73,9 +74,11 @@ export class LocalPlayer {
       this.pitch -= e.movementY * 0.0021;
       this.pitch = Math.max(-1.45, Math.min(1.45, this.pitch));
     });
+    window.addEventListener('contextmenu', (e) => e.preventDefault()); // right-click is a game key
     window.addEventListener('mousedown', (e) => {
       if (document.pointerLockElement === null) return;
       if (e.button === 0) this.firing = true;
+      if (e.button === 2) this.switchWeapon(2); // right mouse → railgun
     });
     window.addEventListener('mouseup', (e) => { if (e.button === 0) this.firing = false; });
     window.addEventListener('wheel', (e) => {
