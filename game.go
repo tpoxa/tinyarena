@@ -92,6 +92,14 @@ type Player struct {
 	Vel       Vec3
 	Grounded  bool
 
+	// human-ish aim: turn toward a target over time, hold fire for a beat
+	// after first spotting it, and shoot along actual facing (not perfect aim).
+	// Skill in [0,1] is the bot's personality — crazy-sharp to lame — and drives
+	// its reaction time, turn speed, and accuracy together.
+	TargetID   int
+	AcquiredAt float64
+	Skill      float64
+
 	// stuck watchdog: knockback can wedge a bot somewhere the nav graph
 	// never planned for — detect no-movement and shake it loose
 	StuckRef Vec3
@@ -244,6 +252,9 @@ func (g *Game) makePlayer(name string, bot bool, conn *Conn) *Player {
 		LastFire:  map[int]float64{},
 		LastSeen:  nowSec(),
 		NodeI:     -1, PrevI: -1,
+	}
+	if bot {
+		p.Skill = rand.Float64() // this one's personality: lame to crazy-sharp
 	}
 	g.players[id] = p
 	g.syncTeamCounts()

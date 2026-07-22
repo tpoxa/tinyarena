@@ -99,6 +99,23 @@ func (g *Game) botCanSee(bot, target *Player) float64 {
 	return dist
 }
 
+// turn `from` toward `to` by at most maxStep radians, taking the short way round
+func approachAngle(from, to, maxStep float64) float64 {
+	d := to - from
+	for d > math.Pi {
+		d -= 2 * math.Pi
+	}
+	for d < -math.Pi {
+		d += 2 * math.Pi
+	}
+	if d > maxStep {
+		d = maxStep
+	} else if d < -maxStep {
+		d = -maxStep
+	}
+	return from + d
+}
+
 func (g *Game) stepBots(dt float64) {
 	t := nowSec()
 	for _, bot := range g.players {
@@ -160,15 +177,23 @@ func (g *Game) stepBots(dt float64) {
 			continue
 		}
 
-		// pick a target first — movement and aim both want to know
+		// pick a target — commit to it while it stays visible so the reaction
+		// clock isn't reset by the nearest-enemy flickering in a crowd
 		var target *Player
 		targetDist := math.Inf(1)
-		for _, p := range g.players {
-			if p.ID == bot.ID || p.Dead || p.Team == bot.Team {
-				continue
+		if cur, ok := g.players[bot.TargetID]; ok && bot.TargetID != 0 && !cur.Dead && cur.Team != bot.Team {
+			if d := g.botCanSee(bot, cur); d >= 0 {
+				target, targetDist = cur, d
 			}
-			if d := g.botCanSee(bot, p); d >= 0 && d < targetDist {
-				target, targetDist = p, d
+		}
+		if target == nil {
+			for _, p := range g.players {
+				if p.ID == bot.ID || p.Dead || p.Team == bot.Team {
+					continue
+				}
+				if d := g.botCanSee(bot, p); d >= 0 && d < targetDist {
+					target, targetDist = p, d
+				}
 			}
 		}
 
@@ -243,31 +268,49 @@ func (g *Game) stepBots(dt float64) {
 
 		// combat
 		if target != nil {
+			// reaction clock resets when a new enemy comes into view
+			if bot.TargetID != target.ID {
+				bot.TargetID = target.ID
+				bot.AcquiredAt = t
+			}
+			// skill drives the whole feel: reaction, turn speed, accuracy
+			reaction := 0.15 + (1-bot.Skill)*0.35 // crazy ~0.15s, lame ~0.5s — the key delay
+			turn := 7.0 + bot.Skill*7.0           // rad/s — swings on over time, no instant snap
+			aimMul := 1.7 - bot.Skill             // 0.7 (tight) .. 1.7 (sloppy)
+
 			a, b := eyePos(bot), eyePos(target)
 			dir := norm(Vec3{b[0] - a[0], b[1] - a[1], b[2] - a[2]})
-			bot.Yaw = math.Atan2(-dir[0], -dir[2])
-			bot.Pitch = math.Asin(math.Max(-1, math.Min(1, dir[1])))
-			if t >= bot.BotFireAt {
+			desiredYaw := math.Atan2(-dir[0], -dir[2])
+			desiredPitch := math.Asin(math.Max(-1, math.Min(1, dir[1])))
+			// turn toward the target — no instant snap, so strafing throws the aim off
+			bot.Yaw = approachAngle(bot.Yaw, desiredYaw, turn*dt)
+			bot.Pitch = approachAngle(bot.Pitch, desiredPitch, turn*dt)
+
+			cp := math.Cos(bot.Pitch)
+			facing := Vec3{-math.Sin(bot.Yaw) * cp, math.Sin(bot.Pitch), -math.Cos(bot.Yaw) * cp}
+			onTarget := facing[0]*dir[0] + facing[1]*dir[1] + facing[2]*dir[2] // 1 = dead on
+			if t >= bot.BotFireAt && t-bot.AcquiredAt >= reaction && onTarget > 0.92 {
 				w := &g.arena.Weapons[0]
-				aimErr := 0.13
+				aimErr := 0.13 * aimMul
 				switch {
 				case targetDist > 18 && bot.Ammo["slugs"] > 0 && rand.Float64() < 0.5:
 					w = &g.arena.Weapons[2] // long lines get railed
-					aimErr = 0.07
+					aimErr = 0.085 * aimMul
 				case targetDist > 9 && bot.Ammo["rockets"] > 0 && rand.Float64() < 0.35:
 					w = &g.arena.Weapons[1]
 				}
-				bot.Weapon = w.ID // everyone sees what it actually holds
-				shotDir := norm(Vec3{
-					dir[0] + (rand.Float64()-0.5)*aimErr,
-					dir[1] + (rand.Float64()-0.5)*aimErr,
-					dir[2] + (rand.Float64()-0.5)*aimErr,
+				bot.Weapon = w.ID     // everyone sees what it actually holds
+				shotDir := norm(Vec3{ // fire along actual facing, not the perfect line
+					facing[0] + (rand.Float64()-0.5)*aimErr,
+					facing[1] + (rand.Float64()-0.5)*aimErr,
+					facing[2] + (rand.Float64()-0.5)*aimErr,
 				})
 				e := eyePos(bot)
 				g.handleFire(bot, w.ID, e[:], shotDir[:])
 				bot.BotFireAt = t + w.Rate + 0.35 + rand.Float64()*0.4
 			}
 		} else {
+			bot.TargetID = 0
 			bot.Yaw = math.Atan2(-mv[0], -mv[2])
 			bot.Pitch = 0
 		}

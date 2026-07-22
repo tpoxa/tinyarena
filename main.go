@@ -60,7 +60,7 @@ func main() {
 	botCount := envInt("BOTS", 3)
 
 	// MAP pins a single map (no rotation); MAPS sets the rotation order
-	rotation := []string{"neon-yard", "circuit", "vertigo"}
+	rotation := []string{"neon-yard", "circuit", "vertigo", "nexus"}
 	if m := os.Getenv("MAP"); m != "" {
 		rotation = []string{m}
 	} else if m := os.Getenv("MAPS"); m != "" {
