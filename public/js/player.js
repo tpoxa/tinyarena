@@ -38,6 +38,7 @@ export class LocalPlayer {
     this.bobPhase = 0;
     this.recoil = 0;
     this.localRockets = [];
+    this.recentBooms = []; // local explosions, to dedupe against server booms
 
     this.buildViewmodel();
     this.bindInput();
@@ -110,11 +111,35 @@ export class LocalPlayer {
   die() {
     this.alive = false;
     this.firing = false;
-    for (const r of this.localRockets) this.effects.removeRocket(r.mesh);
-    this.localRockets.length = 0;
+    // leave localRockets flying — your last shot should finish its arc
     // pull the camera out behind the body to watch it come apart
     this.deathCam = { t: 0, pos: this.pos.clone(), yaw: this.yaw };
     this.viewmodel.visible = false;
+  }
+
+  // The server owns the real rocket; our local prediction can miss a moving
+  // bot (remotes render ~120ms behind). If the server says our rocket blew up
+  // and we haven't already shown it, finish it here.
+  serverBoom(p) {
+    const now = performance.now() / 1000;
+    this.recentBooms = this.recentBooms.filter((e) => now - e.t < 0.6);
+    for (const e of this.recentBooms) {
+      const d = (e.p[0] - p[0]) ** 2 + (e.p[1] - p[1]) ** 2 + (e.p[2] - p[2]) ** 2;
+      if (d < 6.25) return; // already exploded this one locally (within ~2.5m)
+    }
+    if (this.localRockets.length) { // drop the predicted rocket that missed
+      let bi = 0, bd = Infinity;
+      for (let i = 0; i < this.localRockets.length; i++) {
+        const rp = this.localRockets[i].pos;
+        const d = (rp.x - p[0]) ** 2 + (rp.y - p[1]) ** 2 + (rp.z - p[2]) ** 2;
+        if (d < bd) { bd = d; bi = i; }
+      }
+      this.effects.removeRocket(this.localRockets[bi].mesh);
+      this.localRockets.splice(bi, 1);
+    }
+    this.effects.explosion([p[0], p[1], p[2]]);
+    this.audio.play('boom');
+    this.selfKnockback(new THREE.Vector3(p[0], p[1], p[2]), WEAPONS[1]);
   }
 
   forwardDir() {
@@ -394,6 +419,7 @@ export class LocalPlayer {
         this.effects.explosion([at.x, at.y, at.z]);
         this.audio.play('boom');
         this.selfKnockback(at, w);
+        this.recentBooms.push({ p: [at.x, at.y, at.z], t: performance.now() / 1000 });
         this.effects.removeRocket(r.mesh);
         this.localRockets.splice(i, 1);
         continue;

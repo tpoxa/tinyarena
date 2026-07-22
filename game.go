@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -993,7 +994,8 @@ func (g *Game) handleMessage(c *Conn, data []byte) {
 		if msg.T != "join" {
 			return
 		}
-		name := nameRe.ReplaceAllString(msg.Name, "")
+		// uppercase to match the join field (and the rest of the neon UI)
+		name := strings.ToUpper(strings.TrimSpace(nameRe.ReplaceAllString(msg.Name, "")))
 		if len(name) > 14 {
 			name = name[:14]
 		}

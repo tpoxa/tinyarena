@@ -173,7 +173,7 @@ net.on('shot', (msg) => {
 });
 
 net.on('boom', (msg) => {
-  if (msg.owner === net.myId) return; // own rockets explode via local sim
+  if (msg.owner === net.myId) { player.serverBoom(msg.p); return; } // catch prediction misses
   effects.explosion(msg.p);
   audio.playAt('boom', msg.p, player.pos, 60);
 });
