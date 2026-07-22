@@ -161,9 +161,14 @@ net.on('shot', (msg) => {
     effects.railBeam(msg.o, msg.e, 0x27e0ff);
     audio.playAt('rail', msg.o, player.pos, 70);
   } else {
-    effects.beamBetween(msg.o, msg.e, 0.016, 0xffe83d, 0.07, 0.6);
-    effects.impactSpark(msg.e, 0xffb43d, 0.2);
-    audio.playAt('mg', msg.o, player.pos);
+    // machinegun: a short muzzle tracer + impact spark, not a full beam.
+    // The old full-length line looked exactly like a railgun shot.
+    const o = msg.o, e = msg.e;
+    const stub = [o[0] + (e[0] - o[0]) * 0.32, o[1] + (e[1] - o[1]) * 0.32, o[2] + (e[2] - o[2]) * 0.32];
+    effects.beamBetween(o, stub, 0.02, 0xffe07a, 0.04, 0.5);
+    effects.impactSpark(o, 0xffd23d, 0.16); // muzzle flash
+    effects.impactSpark(e, 0xffb43d, 0.22); // where the bullet lands
+    audio.playAt('mg', o, player.pos);
   }
 });
 
